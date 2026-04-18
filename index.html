@@ -266,13 +266,26 @@
   }
   .manual a:hover { color: var(--accent); }
 
-  /* footer — matches sub-line-1 sizing for balance */
+  /* footer — matches sub-line-1 sizing for balance; logo sits directly below */
   .foot {
     position: fixed; top: 18px; left: 50%;
     transform: translateX(-50%);
+    text-align: center;
+  }
+  .foot .foot-text {
     font-size: clamp(10px, 1.6vw, 13px);
     letter-spacing: 3px; text-transform: uppercase;
     color: var(--muted);
+    display: block;
+  }
+  .foot .foot-logo {
+    display: block;
+    margin: 6px auto 0;
+    max-width: 140px;
+    max-height: 34px;
+    width: auto; height: auto;
+    object-fit: contain;
+    opacity: 0.28;     /* same dark/translucent treatment as the radio menu footer logo */
   }
 
   /* noise flash on enter */
@@ -293,7 +306,10 @@
   <div class="static-overlay"></div>
   <div class="flash"></div>
 
-  <div class="foot" translate="no">AFEST STUDIO</div>
+  <div class="foot" translate="no">
+    <span class="foot-text">AFEST STUDIO</span>
+    <img class="foot-logo" src="https://assets.afest.io/afest-elements/AFESTxTD-white.png" alt="" onerror="this.style.display='none';">
+  </div>
 
   <div class="wrap">
     <div class="freq-display">
