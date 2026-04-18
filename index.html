@@ -1,35 +1,28 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark_orange">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex">
-<title>TWISTED DUALITY · Radio Receiver</title>
+<title>radio.afest.io · tuning in</title>
+<meta http-equiv="refresh" content="4; url=https://twysted.afest.io/radio/">
+<link rel="canonical" href="https://twysted.afest.io/radio/">
 <style>
   @font-face {
     font-family: 'WDXL Lubrifont';
     src: local('WDXL Lubrifont JPN VNM'), local('WDXLLubrifontJPNVNM'),
          local('WDXL Lubrifont JPN'), local('WDXLLubrifontJPN'),
-         url('../fonts/WDXLLubrifontJPNVNM-Regular.woff2') format('woff2');
+         url('./fonts/WDXLLubrifontJPNVNM-Regular.woff2') format('woff2');
   }
 
-  :root, [data-theme="dark_orange"] {
-    --bg: #0a0a0a; --panel: #111; --panel-soft: #161616; --border: #222;
-    --accent: #de7029; --accent-2: #5fa7e8;
+  :root {
+    --bg: #0a0a0a;
+    --accent: #de7029;
     --accent-dim: rgba(222,112,41,0.35);
     --grid-rgba: rgba(222,112,41,0.06);
-    --fg: #e6e6e6; --muted: #888; --dim: #555;
-    --crit: #f44336; --good: #4caf50;
-    --line-color: #e6e6e6; --fill-color: #0a0a0a;
-  }
-  [data-theme="golden_green"] {
-    --bg: #0a3835; --panel: #0e2b29; --panel-soft: #123734; --border: #1d4a46;
-    --accent: #C8A153; --accent-2: #82b8d0;
-    --accent-dim: rgba(200,161,83,0.38);
-    --grid-rgba: rgba(200,161,83,0.07);
-    --fg: #e8dcc0; --muted: #7c8c86; --dim: #5a6b66;
-    --crit: #ff7a6a; --good: #6fb37a;
-    --line-color: #e8dcc0; --fill-color: #0a3835;
+    --fg: #e6e6e6;
+    --muted: #888;
+    --dim: #555;
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -38,10 +31,12 @@
     background: var(--bg); color: var(--fg);
     font-family: 'WDXL Lubrifont', 'Courier New', monospace;
     position: relative;
+    display: flex; align-items: center; justify-content: center;
     -webkit-user-select: none; user-select: none;
+    cursor: pointer;
   }
 
-  /* grid-bg + vignette */
+  /* grid-bg + vignette (identical to TD-radio for continuity) */
   body::before {
     content:''; position:fixed; inset:0; z-index:0; pointer-events:none;
     background-image:
@@ -56,1411 +51,323 @@
     background:
       radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,0.75) 100%),
       repeating-linear-gradient(to bottom, rgba(255,255,255,0.02) 0 1px, transparent 1px 3px);
+    animation: scanline-drift 8s linear infinite;
+  }
+  @keyframes scanline-drift {
+    0% { transform: translateY(0); }
+    100% { transform: translateY(3px); }
   }
 
-  /* canvas fills viewport */
-  #viz {
-    position: fixed; top: 0; left: 0; z-index: 1;
-    width: 100%; height: calc(100% - 96px);
+  /* tuning interference overlay */
+  .static-overlay {
+    position: fixed; inset: 0; z-index: 1; pointer-events: none;
+    opacity: 0.22; mix-blend-mode: screen;
+    background-image:
+      repeating-linear-gradient(
+        0deg,
+        rgba(255,255,255,0.06) 0px,
+        rgba(255,255,255,0.06) 1px,
+        transparent 1px,
+        transparent 2px
+      );
+    animation: static-jitter 0.08s steps(2) infinite;
+  }
+  @keyframes static-jitter {
+    0%   { transform: translate(0, 0); }
+    25%  { transform: translate(-1px, 1px); }
+    50%  { transform: translate(1px, -1px); }
+    75%  { transform: translate(-1px, -1px); }
+    100% { transform: translate(1px, 1px); }
   }
 
-  /* ── top bar ── */
-  .top-bar {
-    position: fixed; top: 0; left: 0; right: 0; z-index: 200;
-    display: flex; align-items: center; gap: 8px;
-    padding: 8px 14px;
-    background: rgba(10,10,10,0.55);
-    backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
-    border-bottom: 1px solid rgba(255,255,255,0.07);
-  }
-  .top-bar a {
-    font-size: 0.6rem; letter-spacing: 2px; color: var(--muted);
-    text-decoration: none; text-transform: uppercase; padding: 5px 8px;
-    transition: opacity 0.2s, color 0.2s;
-  }
-  .top-bar a:hover { color: var(--fg); opacity: 0.85; }
-  .top-bar .bar-spacer { flex: 1; }
-  .top-bar .bar-title {
-    position: absolute; left: 50%; transform: translateX(-50%);
-    font-size: 12px; letter-spacing: 5px; text-transform: uppercase;
-    color: var(--fg); white-space: nowrap;
+  .wrap {
+    position: relative; z-index: 2;
+    text-align: center;
+    padding: 0 20px;
   }
 
-  /* hamburger */
-  .bar-hamburger {
-    font-family: inherit; font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
-    background: rgba(255,255,255,0.06); color: var(--muted);
-    border: 1px solid rgba(255,255,255,0.08); padding: 5px 12px; cursor: pointer;
-    transition: color 0.2s, border-color 0.2s;
-    display: flex; align-items: center; gap: 6px;
+  /* LED frequency numbers (big) */
+  .freq-display {
+    display: flex; align-items: baseline; justify-content: center;
+    gap: 12px; margin-bottom: 16px;
+    font-family: 'Courier New', monospace;
   }
-  .bar-hamburger:hover { color: var(--fg); border-color: rgba(255,255,255,0.18); }
-  .bar-hamburger .hamburger-lines {
-    display: flex; flex-direction: column; gap: 3px; width: 14px;
+  .freq-num {
+    font-size: clamp(56px, 14vw, 120px);
+    letter-spacing: 6px; font-weight: bold;
+    color: var(--accent);
+    text-shadow: 0 0 20px var(--accent-dim), 0 0 40px var(--accent-dim);
+    font-feature-settings: "tnum";
+    animation: freq-tune 0.12s steps(2) infinite;
   }
-  .bar-hamburger .hamburger-lines span {
-    display: block; height: 1.5px; background: currentColor; border-radius: 1px;
+  .freq-unit {
+    font-size: clamp(16px, 3vw, 24px);
+    letter-spacing: 4px; color: var(--muted); text-transform: uppercase;
   }
-  .bar-menu {
-    display: none; position: fixed; top: 38px; right: 14px; z-index: 250;
-    background: rgba(10,10,10,0.82);
-    backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
-    border: 1px solid rgba(255,255,255,0.08);
-    padding: 10px 6px;
-    flex-direction: column; gap: 4px; min-width: 170px;
-  }
-  .bar-menu.open { display: flex; }
-  .bar-menu .menu-label {
-    font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
-    color: var(--dim); padding: 6px 14px 2px;
-  }
-  .bar-menu button {
-    font-family: inherit; font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
-    background: none; color: var(--muted);
-    border: none; padding: 8px 14px; cursor: pointer;
-    text-align: left; transition: color 0.15s, background 0.15s;
-  }
-  .bar-menu button:hover { color: var(--fg); background: rgba(255,255,255,0.05); }
-  .bar-menu button.active { color: var(--accent); }
-
-  /* ── brand (bottom-right corner) ── */
-  .brand {
-    position: fixed; bottom: 110px; right: 24px; z-index: 5;
-    text-align: right; pointer-events: none;
-  }
-  .brand .title {
-    font-size: 22px; letter-spacing: 6px; font-weight: bold;
-    color: var(--fg); text-transform: uppercase;
-  }
-  .brand .sub {
-    font-size: 10px; letter-spacing: 3px; color: var(--muted);
-    text-transform: uppercase; margin-top: 3px;
-    pointer-events: auto;
-  }
-  .brand .sub a { color: var(--accent); text-decoration: none; transition: opacity 0.2s; }
-  .brand .sub a:hover { opacity: 0.7; }
-
-  /* ── track display (top-center metadata) ── */
-  .track-meta {
-    position: fixed; top: 54px; left: 50%; transform: translateX(-50%);
-    z-index: 4;
-    display: flex; gap: 18px; padding: 8px 16px;
-    background: rgba(0,0,0,0.4);
-    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-    border: 1px solid rgba(255,255,255,0.08);
-    font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase;
-    color: var(--muted); white-space: nowrap;
-    max-width: calc(100vw - 32px); overflow-x: auto;
-  }
-  .track-meta .m-item { display: flex; gap: 6px; align-items: center; }
-  .track-meta .m-item .k { color: var(--dim); }
-  .track-meta .m-item .v { color: var(--fg); }
-  .track-meta .m-item .v.accent { color: var(--accent); }
-
-  /* ── FM tuner control strip ── */
-  .tuner {
-    position: fixed; bottom: 0; left: 0; right: 0; z-index: 150;
-    height: 96px;
-    background: linear-gradient(180deg, rgba(0,0,0,0.3), rgba(0,0,0,0.82));
-    backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
-    border-top: 1px solid var(--accent-dim);
-    box-shadow: 0 -12px 40px rgba(0,0,0,0.4);
-    display: grid; grid-template-columns: auto 1fr auto auto; gap: 14px;
-    align-items: stretch; padding: 12px 18px;
+  @keyframes freq-tune {
+    0%, 100% { text-shadow: 0 0 20px var(--accent-dim), 0 0 40px var(--accent-dim); }
+    50%      { text-shadow: 0 0 28px var(--accent-dim), 2px 0 var(--accent); }
   }
 
-  /* left: frequency display + scan */
-  .tuner .frequency-panel {
-    display: grid; grid-template-rows: 1fr auto; gap: 6px;
-    min-width: 230px; padding: 8px 14px;
-    border: 1px solid var(--border); background: rgba(0,0,0,0.35);
-    border-left: 3px solid var(--accent);
+  .title {
+    font-size: clamp(14px, 2.4vw, 20px);
+    letter-spacing: 8px; text-transform: uppercase;
+    color: var(--fg); margin-bottom: 10px;
+  }
+  .title .dot { color: var(--accent); }
+  .sub {
+    font-size: clamp(10px, 1.6vw, 13px);
+    letter-spacing: 3px; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 36px;
+  }
+
+  /* tuning dial */
+  .dial {
+    width: min(420px, 70vw); height: 28px;
+    margin: 0 auto 24px;
     position: relative;
+    border: 1px solid rgba(255,255,255,0.08);
+    background: rgba(0,0,0,0.4);
+    display: flex; align-items: center;
   }
-  .tuner .frequency-panel::before, .tuner .frequency-panel::after {
+  .dial::before, .dial::after {
     content: ''; position: absolute; width: 10px; height: 10px;
     border: 1.5px solid var(--accent);
   }
-  .tuner .frequency-panel::before { top: -1px; left: -1px; border-right: none; border-bottom: none; }
-  .tuner .frequency-panel::after { bottom: -1px; right: -1px; border-left: none; border-top: none; }
+  .dial::before { top: -1px; left: -1px; border-right: none; border-bottom: none; }
+  .dial::after { bottom: -1px; right: -1px; border-left: none; border-top: none; }
 
-  .tuner .freq-row {
-    display: flex; align-items: baseline; gap: 8px;
-    font-family: 'Courier New', monospace;
-  }
-  .tuner .freq-num {
-    font-size: 32px; letter-spacing: 2px; color: var(--accent);
-    text-shadow: 0 0 8px var(--accent-dim);
-    font-weight: bold; font-feature-settings: "tnum";
-    transition: color 0.15s;
-  }
-  .tuner .freq-num.tuning { color: var(--fg); animation: freq-flicker 0.08s steps(2) infinite; }
-  @keyframes freq-flicker {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.6; }
-  }
-  .tuner .freq-unit {
-    font-size: 11px; letter-spacing: 2px; color: var(--muted); text-transform: uppercase;
-  }
-  .tuner .signal-row {
-    display: flex; align-items: center; gap: 10px;
-    font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: var(--dim);
-  }
-  .tuner .signal-bars {
-    display: flex; gap: 2px; align-items: flex-end; height: 10px;
-  }
-  .tuner .signal-bars span {
-    display: block; width: 3px; background: var(--border); transition: background 0.1s;
-  }
-  .tuner .signal-bars span.on { background: var(--accent); }
-  .tuner .signal-bars span:nth-child(1) { height: 3px; }
-  .tuner .signal-bars span:nth-child(2) { height: 5px; }
-  .tuner .signal-bars span:nth-child(3) { height: 7px; }
-  .tuner .signal-bars span:nth-child(4) { height: 9px; }
-  .tuner .signal-bars span:nth-child(5) { height: 10px; }
-  .tuner .signal-label { flex: 1; }
-
-  /* transport: play/pause + scan */
-  .tuner .transport {
-    display: flex; gap: 8px; align-items: center;
-    padding: 0;
-  }
-  .tuner .tbtn {
-    font-family: inherit; font-size: 11px; letter-spacing: 2.5px; text-transform: uppercase;
-    background: rgba(0,0,0,0.55); color: var(--fg);
-    border: 1px solid var(--accent); padding: 10px 18px;
-    cursor: pointer; white-space: nowrap;
-    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-    box-shadow: 0 4px 14px rgba(0,0,0,0.5), 3px 3px 0 var(--accent-dim);
-    transition: all 0.12s;
-    min-width: 78px;
-  }
-  .tuner .tbtn:hover:not(:disabled) {
-    color: var(--accent);
-    transform: translate(-1px, -1px);
-    box-shadow: 0 6px 18px rgba(0,0,0,0.6), 4px 4px 0 var(--accent-dim);
-  }
-  .tuner .tbtn:active:not(:disabled) { transform: translate(0,0); box-shadow: none; }
-  .tuner .tbtn:disabled { opacity: 0.4; cursor: not-allowed; }
-  .tuner .tbtn.scan { min-width: 92px; }
-  .tuner .tbtn.scan.active { background: var(--accent); color: var(--bg); }
-
-  /* center: tuning strip (progress) */
-  .tuner .tuning-strip {
-    display: grid; grid-template-rows: auto 1fr auto; gap: 4px;
-    font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: var(--dim);
-    min-width: 0;
-  }
-  .tuner .tuning-strip .strip-top {
-    display: flex; justify-content: space-between;
-  }
-  .tuner .tuning-strip .strip-top .track-name {
-    color: var(--accent); letter-spacing: 2px;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    max-width: 60%;
-  }
-  .tuner .tuning-strip .strip-top .time { color: var(--muted); font-family: 'Courier New', monospace; }
-
-  .tuner .tuning-bar {
-    position: relative; cursor: pointer; height: 26px;
-    display: flex; align-items: center;
-  }
-  .tuner .tuning-bar::before {
-    content: ''; position: absolute; left: 0; right: 0; top: 50%;
-    height: 2px; background: var(--border);
+  .dial-ticks {
+    position: absolute; left: 8px; right: 8px; top: 50%;
     transform: translateY(-50%);
-  }
-  .tuner .tuning-ticks {
-    position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%);
     display: flex; justify-content: space-between; pointer-events: none;
   }
-  .tuner .tuning-ticks span {
+  .dial-ticks span {
     display: block; width: 1px; height: 6px; background: var(--dim);
   }
-  .tuner .tuning-ticks span.major { height: 10px; background: var(--muted); }
-  .tuner .tuning-prog {
-    position: absolute; left: 0; top: 50%; transform: translateY(-50%);
-    height: 2px; background: var(--accent); transition: width 0.1s;
-  }
-  .tuner .tuning-needle {
-    position: absolute; left: 0; top: 0; bottom: 0;
+  .dial-ticks span.major { height: 12px; background: var(--muted); }
+  .dial-needle {
+    position: absolute; top: -4px; bottom: -4px; left: 0;
     width: 2px; background: var(--accent);
-    box-shadow: 0 0 8px var(--accent), 0 0 16px var(--accent-dim);
-    transform: translateX(-50%); transition: left 0.1s;
-    pointer-events: none;
+    box-shadow: 0 0 10px var(--accent), 0 0 20px var(--accent-dim);
+    transform: translateX(-50%);
+    animation: needle-sweep 3.2s ease-in-out forwards;
   }
-  .tuner .tuning-needle::before, .tuner .tuning-needle::after {
+  .dial-needle::before, .dial-needle::after {
     content: ''; position: absolute; left: 50%; transform: translateX(-50%);
-    width: 8px; height: 8px; background: var(--accent);
+    width: 10px; height: 8px; background: var(--accent);
     clip-path: polygon(50% 0, 100% 100%, 0 100%);
   }
-  .tuner .tuning-needle::before { top: -2px; }
-  .tuner .tuning-needle::after { bottom: -2px; transform: translateX(-50%) rotate(180deg); }
-  .tuner .strip-bot {
-    display: flex; justify-content: space-between; align-items: center;
-    font-family: 'Courier News', monospace;
+  .dial-needle::before { top: -4px; }
+  .dial-needle::after { bottom: -4px; transform: translateX(-50%) rotate(180deg); }
+  @keyframes needle-sweep {
+    0%   { left: 8%; }
+    15%  { left: 72%; }
+    30%  { left: 28%; }
+    45%  { left: 88%; }
+    60%  { left: 44%; }
+    75%  { left: 66%; }
+    90%  { left: 58%; }
+    100% { left: 62%; }
   }
-  .tuner .strip-bot .readout { display: flex; gap: 6px; align-items: center; }
-  .tuner .strip-bot .readout .v { color: var(--fg); }
-  .tuner .strip-bot .readout .val-accent { color: var(--accent); }
 
-  /* right: side panel (recalibrate) */
-  .tuner .side-panel {
-    display: flex; flex-direction: column; gap: 6px; align-items: stretch;
-    padding: 4px 0;
-  }
-  .tuner .quality-label {
-    font-size: 8px; letter-spacing: 2px; text-transform: uppercase; color: var(--dim);
-    text-align: center;
-  }
-  .tuner .qbtn {
-    font-family: inherit; font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase;
-    background: transparent; color: var(--muted);
-    border: 1px solid var(--border); padding: 6px 12px;
-    cursor: pointer; white-space: nowrap;
-    transition: all 0.12s;
-  }
-  .tuner .qbtn:hover:not(:disabled) { color: var(--fg); border-color: var(--accent-dim); }
-  .tuner .qbtn.active { color: var(--accent); border-color: var(--accent); }
-  .tuner .qbtn:disabled { opacity: 0.3; cursor: not-allowed; }
-  .tuner .quality-row { display: flex; gap: 4px; }
-  .tuner .quality-row .qbtn { flex: 1; }
-
-  /* ── toast ── */
-  .toast {
-    position: fixed; top: 54px; left: 50%;
-    transform: translateX(-50%) translateY(-30px);
-    z-index: 300; opacity: 0; pointer-events: none;
-    background: rgba(0,0,0,0.85); color: var(--accent);
-    padding: 8px 16px; font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
-    border: 1px solid var(--accent-dim);
-    transition: opacity 0.25s, transform 0.25s;
-  }
-  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-
-  /* ── loading overlay (while fetching first track) ── */
-  .loading {
-    position: fixed; inset: 0; z-index: 400;
-    display: flex; align-items: center; justify-content: center;
-    flex-direction: column; gap: 12px;
-    background: var(--bg);
-    color: var(--muted);
+  /* status line */
+  .status {
     font-size: 11px; letter-spacing: 3px; text-transform: uppercase;
-    transition: opacity 0.5s;
+    color: var(--dim); min-height: 18px;
+    font-family: 'Courier New', monospace;
   }
-  .loading.hidden { opacity: 0; pointer-events: none; }
-  .loading .dots { font-family: 'Courier New', monospace; color: var(--accent); }
-  .loading .status { font-size: 9px; color: var(--dim); letter-spacing: 2px; }
+  .status .bracket { color: var(--muted); }
+  .status .blink { color: var(--accent); animation: blink 0.8s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: 0.2; } }
 
-  /* ── prevent right-click/drag on media elements area ── */
-  #viz { pointer-events: auto; }
-
-  /* ── mobile ── */
-  @media (max-width: 860px) {
-    .tuner { grid-template-columns: 1fr; grid-template-rows: auto auto auto auto; height: auto; padding: 10px 12px; gap: 8px; }
-    .tuner .frequency-panel { min-width: 0; }
-    .tuner .transport { justify-content: center; }
-    #viz { height: calc(100% - 260px); }
-    .brand { bottom: 270px; right: 14px; }
-    .brand .title { font-size: 16px; letter-spacing: 4px; }
-    .track-meta { top: 50px; font-size: 9px; gap: 10px; padding: 6px 10px; }
+  /* signal bars */
+  .signal-bars {
+    display: inline-flex; gap: 2px; align-items: flex-end; height: 10px;
+    margin: 0 8px; vertical-align: middle;
   }
-  @media (max-width: 520px) {
-    .tuner .tbtn { font-size: 10px; padding: 8px 14px; min-width: 62px; }
-    .tuner .freq-num { font-size: 24px; }
-    .track-meta .m-item:not(.primary) { display: none; }
+  .signal-bars span {
+    display: block; width: 3px; background: var(--dim);
+  }
+  .signal-bars span:nth-child(1) { height: 3px; }
+  .signal-bars span:nth-child(2) { height: 5px; }
+  .signal-bars span:nth-child(3) { height: 7px; }
+  .signal-bars span:nth-child(4) { height: 9px; }
+  .signal-bars span:nth-child(5) { height: 10px; }
+  .signal-bars.lv1 span:nth-child(-n+1) { background: var(--accent); }
+  .signal-bars.lv2 span:nth-child(-n+2) { background: var(--accent); }
+  .signal-bars.lv3 span:nth-child(-n+3) { background: var(--accent); }
+  .signal-bars.lv4 span:nth-child(-n+4) { background: var(--accent); }
+  .signal-bars.lv5 span:nth-child(-n+5) { background: var(--accent); }
+
+  /* manual link fallback */
+  .manual {
+    position: fixed; bottom: 24px; left: 50%;
+    transform: translateX(-50%);
+    z-index: 3;
+    font-size: 10px; letter-spacing: 3px; text-transform: uppercase;
+    color: var(--dim);
+  }
+  .manual a { color: var(--muted); text-decoration: none; border-bottom: 1px dotted currentColor; transition: color 0.2s; }
+  .manual a:hover { color: var(--accent); }
+
+  /* footer */
+  .foot {
+    position: fixed; top: 18px; left: 50%;
+    transform: translateX(-50%);
+    font-size: 9px; letter-spacing: 4px; text-transform: uppercase;
+    color: var(--dim);
+  }
+
+  /* noise flash on enter */
+  .flash {
+    position: fixed; inset: 0; z-index: 10;
+    background: var(--fg); opacity: 0; pointer-events: none;
+    animation: flash 0.28s ease-out forwards;
+    animation-delay: 2.9s;
+  }
+  @keyframes flash {
+    0% { opacity: 0; }
+    30% { opacity: 0.4; }
+    100% { opacity: 0; }
   }
 </style>
 </head>
 <body>
-<canvas id="viz"></canvas>
+  <div class="static-overlay"></div>
+  <div class="flash"></div>
 
-<nav class="top-bar">
-  <a href="/" id="back-td">&larr; TWISTED DUALITY</a>
-  <span class="bar-title" data-i18n="bar-title">RADIO RECEIVER</span>
-  <div class="bar-spacer"></div>
-  <button class="bar-hamburger" id="bar-hamburger">
-    <span class="hamburger-label" data-i18n="settings">Settings</span>
-    <span class="hamburger-lines"><span></span><span></span><span></span></span>
-  </button>
-  <div class="bar-menu" id="bar-menu">
-    <div class="menu-label" data-i18n="lang-label">Languages</div>
-    <button data-lang-btn="en" class="active">English</button>
-    <button data-lang-btn="de">Deutsch</button>
-    <button data-lang-btn="ja">日本語</button>
-  </div>
-</nav>
+  <div class="foot">radio.afest.io &middot; band 88&ndash;108</div>
 
-<!-- metadata strip -->
-<div class="track-meta" id="trackMeta">
-  <div class="m-item primary"><span class="k" data-i18n="m-signal">SIGNAL</span><span class="v accent" id="m-signal">---</span></div>
-  <div class="m-item"><span class="k" data-i18n="m-decoder">DECODER</span><span class="v" id="m-decoder">---</span></div>
-  <div class="m-item"><span class="k" data-i18n="m-status">STATUS</span><span class="v" id="m-status">---</span></div>
-  <div class="m-item"><span class="k" data-i18n="m-access">ACCESS</span><span class="v" id="m-access">---</span></div>
-  <div class="m-item"><span class="k" data-i18n="m-origin">ORIGIN</span><span class="v" id="m-origin">---</span></div>
-</div>
-
-<!-- brand -->
-<div class="brand">
-  <div class="title">WSI Radio Receiver</div>
-  <div class="sub"><span data-i18n="constructed-by">Constructed by</span> <a href="https://www.instagram.com/wyred.on/" target="_blank" rel="noopener">@wyred.on</a></div>
-</div>
-
-<!-- toast -->
-<div class="toast" id="toast"></div>
-
-<!-- tuner control strip -->
-<div class="tuner">
-  <!-- frequency display -->
-  <div class="frequency-panel">
-    <div class="freq-row">
-      <span class="freq-num" id="freqNum">88.1</span>
+  <div class="wrap">
+    <div class="freq-display">
+      <span class="freq-num" id="freqNum">88.8</span>
       <span class="freq-unit">MHz</span>
     </div>
-    <div class="signal-row">
-      <div class="signal-bars" id="signalBars">
-        <span></span><span></span><span></span><span></span><span></span>
-      </div>
-      <div class="signal-label" data-i18n="signal-label">SIGNAL</div>
-      <div class="signal-mode" id="signalMode">ON-AIR</div>
+    <div class="title">TWISTED<span class="dot"> &bull; </span>DUALITY</div>
+    <div class="sub">Radio Receiver &middot; Tuning In</div>
+
+    <div class="dial">
+      <div class="dial-ticks" id="dialTicks"></div>
+      <div class="dial-needle"></div>
+    </div>
+
+    <div class="status">
+      <span class="bracket">[</span>
+      <span id="statusText">LOCATING SIGNAL</span>
+      <span class="signal-bars lv1" id="bars"><span></span><span></span><span></span><span></span><span></span></span>
+      <span class="bracket">]</span>
+      <span class="blink">&#9632;</span>
     </div>
   </div>
 
-  <!-- tuning strip: track name + progress + BPM/KEY -->
-  <div class="tuning-strip">
-    <div class="strip-top">
-      <div class="track-name" id="trackName">--</div>
-      <div class="time" id="trackTime">0:00 / 0:00</div>
-    </div>
-    <div class="tuning-bar" id="tuningBar">
-      <div class="tuning-ticks" id="tuningTicks"></div>
-      <div class="tuning-prog" id="tuningProg"></div>
-      <div class="tuning-needle" id="tuningNeedle"></div>
-    </div>
-    <div class="strip-bot">
-      <div class="readout"><span data-i18n="bpm">BPM</span><span class="v val-accent" id="bpmVal">---</span></div>
-      <div class="readout"><span data-i18n="key">KEY</span><span class="v val-accent" id="keyVal">---</span></div>
-      <div class="readout"><span data-i18n="freq-label">FREQ</span><span class="v" id="freqReadout">88.1 MHz</span></div>
-    </div>
+  <div class="manual">
+    If you are not redirected: <a href="https://twysted.afest.io/radio/">enter station</a>
   </div>
-
-  <!-- transport buttons -->
-  <div class="transport">
-    <button class="tbtn scan" id="btnScan" data-i18n="scan">SCAN</button>
-    <button class="tbtn" id="btnPlay" data-i18n="play">PLAY</button>
-  </div>
-
-  <!-- right: recalibrate signal -->
-  <div class="side-panel">
-    <div class="quality-label" data-i18n="recalibrate">RECALIBRATE SIGNAL</div>
-    <div class="quality-row">
-      <button class="qbtn active" data-quality="normal" id="qbtnNormal" data-i18n="q-normal">NORMAL</button>
-      <button class="qbtn" data-quality="highfi" id="qbtnHighfi" data-i18n="q-highfi">HI-FI</button>
-    </div>
-  </div>
-</div>
-
-<!-- loading -->
-<div class="loading" id="loading">
-  <div><span data-i18n="tuning-in">TUNING IN</span><span class="dots" id="loadDots">...</span></div>
-  <div class="status" id="loadStatus">CONTACTING TRANSMITTER</div>
-</div>
 
 <script>
 'use strict';
 
-// ══════════════════════════════════════════════════════════════════
-// CONFIG
-// ══════════════════════════════════════════════════════════════════
-const CFG = {
-  fftSize: 2048,
-  smoothing: 0.82,
-  terrainLines: 113,
-  freqSamples: 160,
-  heightScale: 3.8,
-  pushEvery: 3,
-  perspective: '90',
-  isoOffsetX: 4,
-  isoOffsetY: 3.4,
-  lineWidth: 0.6,
-  opacityFront: 0.95,
-  opacityBack: 0.15,
-  _posX: 8, _posY: 91, _width: 66,
-  bpmUpdateInterval: 180,
-  keyUpdateInterval: 200,
-};
-
-const CDN_BASE = 'https://assets.afest.io/twysted/radio/';
-const LOCAL_BASE = './tracks/';
-const SIGNAL_REMOTE = CDN_BASE + 'signal.dat';
-const SIGNAL_LOCAL = LOCAL_BASE + 'track-names.txt';
-
-// ══════════════════════════════════════════════════════════════════
-// I18N
-// ══════════════════════════════════════════════════════════════════
-const I18N = {
-  en: {
-    'bar-title': 'RADIO RECEIVER',
-    'settings': 'Settings',
-    'lang-label': 'Languages',
-    'm-signal': 'SIGNAL',
-    'm-decoder': 'DECODER',
-    'm-status': 'STATUS',
-    'm-access': 'ACCESS',
-    'm-origin': 'ORIGIN',
-    'constructed-by': 'Constructed by',
-    'signal-label': 'SIGNAL',
-    'bpm': 'BPM',
-    'key': 'KEY',
-    'freq-label': 'FREQ',
-    'scan': 'SCAN',
-    'play': 'PLAY',
-    'pause': 'PAUSE',
-    'recalibrate': 'RECALIBRATE SIGNAL',
-    'q-normal': 'NORMAL',
-    'q-highfi': 'HI-FI',
-    'tuning-in': 'TUNING IN',
-    'contacting': 'CONTACTING TRANSMITTER',
-    'offline-mode': 'FALLBACK · OFFLINE SIGNAL',
-    'on-air': 'ON-AIR',
-    'scanning': 'SCANNING',
-    'no-signal': 'NO SIGNAL FOUND',
-    'failed': 'TRANSMISSION FAILED',
-  },
-  de: {
-    'bar-title': 'FUNKEMPFÄNGER',
-    'settings': 'Einstellungen',
-    'lang-label': 'Sprachen',
-    'm-signal': 'SIGNAL',
-    'm-decoder': 'DEKODER',
-    'm-status': 'STATUS',
-    'm-access': 'ZUGANG',
-    'm-origin': 'URSPRUNG',
-    'constructed-by': 'Konstruiert von',
-    'signal-label': 'SIGNAL',
-    'bpm': 'BPM',
-    'key': 'TON',
-    'freq-label': 'FREQ',
-    'scan': 'SUCHE',
-    'play': 'PLAY',
-    'pause': 'PAUSE',
-    'recalibrate': 'SIGNAL NEU KALIBRIEREN',
-    'q-normal': 'NORMAL',
-    'q-highfi': 'HI-FI',
-    'tuning-in': 'EINSTELLEN',
-    'contacting': 'KONTAKTIERE SENDER',
-    'offline-mode': 'NOTBETRIEB · OFFLINE-SIGNAL',
-    'on-air': 'ON-AIR',
-    'scanning': 'SUCHLAUF',
-    'no-signal': 'KEIN SIGNAL',
-    'failed': 'ÜBERTRAGUNG FEHLGESCHLAGEN',
-  },
-  ja: {
-    'bar-title': '受信機',
-    'settings': '設定',
-    'lang-label': '言語',
-    'm-signal': '信号',
-    'm-decoder': '発信局',
-    'm-status': '状態',
-    'm-access': '接続',
-    'm-origin': '原曲',
-    'constructed-by': '構築',
-    'signal-label': '信号',
-    'bpm': 'BPM',
-    'key': '調',
-    'freq-label': '周波',
-    'scan': '走査',
-    'play': '再生',
-    'pause': '停止',
-    'recalibrate': '再較正',
-    'q-normal': '標準',
-    'q-highfi': '高音質',
-    'tuning-in': '同調中',
-    'contacting': '送信所接続中',
-    'offline-mode': '緊急回路・オフライン',
-    'on-air': '送信中',
-    'scanning': '走査中',
-    'no-signal': '信号喪失',
-    'failed': '伝送失敗',
+// ── build dial ticks ──
+(function(){
+  const ticks = document.getElementById('dialTicks');
+  for (let i = 0; i <= 20; i++) {
+    const s = document.createElement('span');
+    if (i % 5 === 0) s.className = 'major';
+    ticks.appendChild(s);
   }
-};
+})();
 
-let currentLang = localStorage.getItem('td-radio-lang') || 'en';
-if (!I18N[currentLang]) currentLang = 'en';
+// ── frequency flicker + status ──
+const freqNum = document.getElementById('freqNum');
+const statusText = document.getElementById('statusText');
+const bars = document.getElementById('bars');
 
-function t(k) { return (I18N[currentLang] && I18N[currentLang][k]) || I18N.en[k] || k; }
+const STATUSES = [
+  'LOCATING SIGNAL',
+  'SCANNING BAND',
+  'RECEIVING',
+  'LOCKED',
+];
 
-function applyLang(lang) {
-  currentLang = lang;
-  document.documentElement.lang = lang;
-  localStorage.setItem('td-radio-lang', lang);
-  document.querySelectorAll('[data-i18n]').forEach(el => {
-    el.textContent = t(el.dataset.i18n);
-  });
-  document.querySelectorAll('.bar-menu [data-lang-btn]').forEach(b => {
-    b.classList.toggle('active', b.dataset.langBtn === lang);
-  });
-  // play button reflects current state
-  updatePlayBtn();
+let startedAt = Date.now();
+const totalMs = 3200;
+
+function tick() {
+  const t = (Date.now() - startedAt) / totalMs;
+  if (t >= 1) {
+    freqNum.textContent = '103.4';
+    statusText.textContent = STATUSES[3];
+    bars.className = 'signal-bars lv5';
+    return;
+  }
+  // freq wandering: random jumps until near-end, then settle
+  if (t < 0.85) {
+    const base = 88 + Math.random() * 20;
+    freqNum.textContent = base.toFixed(1);
+  } else {
+    // settle toward 103.4
+    const settle = (t - 0.85) / 0.15;
+    const v = 88 + Math.random() * 20 * (1 - settle) + 103.4 * settle;
+    freqNum.textContent = Math.min(107.9, Math.max(88, v)).toFixed(1);
+  }
+  // status text advances
+  const idx = Math.min(STATUSES.length - 1, Math.floor(t * STATUSES.length));
+  statusText.textContent = STATUSES[idx];
+  // signal bars grow
+  const lv = Math.min(5, 1 + Math.floor(t * 5));
+  bars.className = 'signal-bars lv' + lv;
+  requestAnimationFrame(tick);
 }
+tick();
 
-// ══════════════════════════════════════════════════════════════════
-// SIGNAL (metadata) PARSER
-// ══════════════════════════════════════════════════════════════════
-function parseSignalDat(text) {
-  const blocks = text.split(/={5,}/).map(b => b.trim()).filter(b => b);
-  const tracks = [];
-  for (const block of blocks) {
-    const lines = block.split(/\r?\n/).map(l => l.trim()).filter(l => l);
-    const files = [];
-    const meta = {};
-    for (const line of lines) {
-      if (/^File\s*:/i.test(line)) {
-        const f = line.replace(/^File\s*:/i, '').trim();
-        if (f) files.push(f);
-      } else {
-        const eq = line.indexOf('=');
-        if (eq > 0) meta[line.slice(0, eq).trim()] = line.slice(eq + 1).trim();
-      }
-    }
-    if (files.length || meta.offline_file) {
-      tracks.push({ files, meta });
-    }
-  }
-  return tracks;
-}
-
-// ══════════════════════════════════════════════════════════════════
-// TRACK REGISTRY + MODE DETECTION
-// ══════════════════════════════════════════════════════════════════
-const Registry = {
-  mode: null,          // 'online' | 'offline'
-  tracks: [],
-  currentIdx: -1,
-  quality: localStorage.getItem('td-radio-quality') || 'normal',  // 'normal' | 'highfi'
-
-  async init() {
-    // try online first
-    setLoadStatus('contacting');
-    try {
-      const res = await fetch(SIGNAL_REMOTE, { cache: 'no-cache' });
-      if (!res.ok) throw new Error('remote signal fetch failed');
-      const text = await res.text();
-      const parsed = parseSignalDat(text);
-      if (!parsed.length) throw new Error('remote signal empty');
-      this.tracks = parsed;
-      this.mode = 'online';
-      return;
-    } catch (_) { /* fall through */ }
-
-    // fallback: offline (local repo)
-    try {
-      const res = await fetch(SIGNAL_LOCAL, { cache: 'no-cache' });
-      if (!res.ok) throw new Error('local signal fetch failed');
-      const text = await res.text();
-      const parsed = parseSignalDat(text);
-      if (!parsed.length) throw new Error('local signal empty');
-      this.tracks = parsed;
-      this.mode = 'offline';
-      toast(t('offline-mode'), 3000);
-    } catch (e) {
-      this.mode = 'offline';
-      this.tracks = [];
-    }
-  },
-
-  metaFor(idx, key) {
-    const t = this.tracks[idx];
-    if (!t) return '';
-    if (this.mode === 'offline') {
-      return t.meta[key + '_offline'] || t.meta[key] || '';
-    }
-    return t.meta[key] || '';
-  },
-
-  urlFor(idx) {
-    const t = this.tracks[idx];
-    if (!t) return null;
-    if (this.mode === 'offline') {
-      const f = t.meta.offline_file;
-      return f ? LOCAL_BASE + f : null;
-    }
-    // online: pick by quality
-    const wantWav = this.quality === 'highfi';
-    const match = t.files.find(f => wantWav ? /\.wav$/i.test(f) : /\.mp3$/i.test(f));
-    if (match) return CDN_BASE + match;
-    // fallback: first file
-    return t.files[0] ? CDN_BASE + t.files[0] : null;
-  },
-
-  pickRandomIdx() {
-    if (!this.tracks.length) return -1;
-    if (this.tracks.length === 1) return 0;
-    let i = this.currentIdx;
-    while (i === this.currentIdx) {
-      i = Math.floor(Math.random() * this.tracks.length);
-    }
-    return i;
-  }
-};
-
-// ══════════════════════════════════════════════════════════════════
-// AUDIO ENGINE (fetch → decode → BufferSource — no <audio> tag)
-// ══════════════════════════════════════════════════════════════════
-class AudioEngine {
-  constructor() {
-    this.ctx = null;
-    this.analyser = null;
-    this.masterGain = null;
-    this.trackGain = null;
-    this.noiseGain = null;
-    this.source = null;
-    this.noiseSource = null;
-    this.buffer = null;
-    this.freqData = null;
-    this.playing = false;
-    this.startTime = 0;       // ctx time when current source started
-    this.pausedAt = 0;        // offset within buffer when paused
-    this.loadCounter = 0;     // increments on each load, used to ignore stale decodes
-  }
-
-  init() {
-    if (this.ctx) return;
-    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
-    this.analyser = this.ctx.createAnalyser();
-    this.analyser.fftSize = CFG.fftSize;
-    this.analyser.smoothingTimeConstant = CFG.smoothing;
-    this.masterGain = this.ctx.createGain();
-    this.trackGain = this.ctx.createGain();
-    this.noiseGain = this.ctx.createGain();
-    this.noiseGain.gain.value = 0;
-
-    // chain: [source/noise] → trackGain/noiseGain → analyser → masterGain → destination
-    this.trackGain.connect(this.analyser);
-    this.noiseGain.connect(this.analyser);
-    this.analyser.connect(this.masterGain);
-    this.masterGain.connect(this.ctx.destination);
-
-    this.freqData = new Uint8Array(this.analyser.frequencyBinCount);
-  }
-
-  async resume() {
-    if (this.ctx && this.ctx.state === 'suspended') await this.ctx.resume();
-  }
-
-  async loadUrl(url) {
-    this.init();
-    const id = ++this.loadCounter;
-    // fetch as arraybuffer (hidden from IDM — not a media element)
-    const res = await fetch(url, { mode: 'cors', credentials: 'omit', cache: 'no-store' });
-    if (!res.ok) throw new Error('fetch failed: ' + res.status);
-    const ab = await res.arrayBuffer();
-    if (id !== this.loadCounter) return null;  // superseded by later load
-    const buf = await this.ctx.decodeAudioData(ab);
-    if (id !== this.loadCounter) return null;
-    this.stopCurrent();
-    this.buffer = buf;
-    this.pausedAt = 0;
-    return buf;
-  }
-
-  stopCurrent() {
-    if (this.source) {
-      try { this.source.onended = null; this.source.stop(); } catch (_) {}
-      try { this.source.disconnect(); } catch (_) {}
-      this.source = null;
-    }
-    this.playing = false;
-  }
-
-  _startAt(offset, fadeIn) {
-    if (!this.buffer) return;
-    this.stopCurrent();
-    const src = this.ctx.createBufferSource();
-    src.buffer = this.buffer;
-    // reset track gain
-    this.trackGain.gain.cancelScheduledValues(this.ctx.currentTime);
-    if (fadeIn && fadeIn > 0) {
-      this.trackGain.gain.setValueAtTime(0, this.ctx.currentTime);
-      this.trackGain.gain.linearRampToValueAtTime(1, this.ctx.currentTime + fadeIn);
-    } else {
-      this.trackGain.gain.setValueAtTime(1, this.ctx.currentTime);
-    }
-    src.connect(this.trackGain);
-    src.start(0, offset);
-    src.onended = () => {
-      if (this.source === src) {
-        this.playing = false;
-        updatePlayBtn();
-      }
-    };
-    this.source = src;
-    this.startTime = this.ctx.currentTime;
-    this.pausedAt = offset;
-    this.playing = true;
-  }
-
-  async play() {
-    await this.resume();
-    if (!this.buffer) return;
-    if (this.playing) return;
-    this._startAt(this.pausedAt || 0, 0);
-  }
-
-  pause() {
-    if (!this.playing) return;
-    this.pausedAt = this.currentTime;
-    if (this.pausedAt >= this.duration) this.pausedAt = 0;
-    this.stopCurrent();
-  }
-
-  async seek(pct) {
-    if (!this.buffer) return;
-    const target = Math.max(0, Math.min(this.duration, this.duration * pct));
-    const wasPlaying = this.playing;
-    this.pausedAt = target;
-    this.stopCurrent();
-    if (wasPlaying) this._startAt(target, 0);
-  }
-
-  // crossfade from a noise source to a freshly-decoded track
-  // noiseSrc + noiseGain are assumed already running
-  crossfadeToTrack(offset, duration) {
-    if (!this.buffer) return;
-    this.stopCurrent();
-    const src = this.ctx.createBufferSource();
-    src.buffer = this.buffer;
-    this.trackGain.gain.cancelScheduledValues(this.ctx.currentTime);
-    this.trackGain.gain.setValueAtTime(0, this.ctx.currentTime);
-    this.trackGain.gain.linearRampToValueAtTime(1, this.ctx.currentTime + duration);
-
-    // fade noise out in parallel
-    this.noiseGain.gain.cancelScheduledValues(this.ctx.currentTime);
-    this.noiseGain.gain.linearRampToValueAtTime(0, this.ctx.currentTime + duration);
-
-    src.connect(this.trackGain);
-    src.start(0, offset);
-    src.onended = () => {
-      if (this.source === src) {
-        this.playing = false;
-        updatePlayBtn();
-      }
-    };
-    this.source = src;
-    this.startTime = this.ctx.currentTime;
-    this.pausedAt = offset;
-    this.playing = true;
-
-    // stop noise a beat after its fade is done
-    setTimeout(() => this.stopNoise(), (duration + 0.1) * 1000);
-  }
-
-  // ── radio static noise ──
-  startNoise(level) {
-    if (!this.ctx) this.init();
-    this.stopNoise();
-    // build pink-ish noise (1.5s buffer) with mild bandpass-style shaping
-    const sr = this.ctx.sampleRate;
-    const len = Math.floor(sr * 1.5);
-    const buf = this.ctx.createBuffer(2, len, sr);
+// ── WebAudio: radio static during tune-in ──
+let ctx = null;
+function playTuneInSound() {
+  try {
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const sr = ctx.sampleRate;
+    const dur = 3.2;
+    const len = Math.floor(sr * dur);
+    const buf = ctx.createBuffer(2, len, sr);
     for (let ch = 0; ch < 2; ch++) {
       const d = buf.getChannelData(ch);
-      // simple pink via averaging
       let b0=0,b1=0,b2=0;
       for (let i = 0; i < len; i++) {
         const white = Math.random() * 2 - 1;
         b0 = 0.99765*b0 + white*0.0990460;
         b1 = 0.96300*b1 + white*0.2965164;
         b2 = 0.57000*b2 + white*1.0526913;
-        d[i] = (b0 + b1 + b2 + white * 0.1848) * 0.18;
+        d[i] = (b0 + b1 + b2 + white * 0.1848) * 0.12;
       }
     }
-    const src = this.ctx.createBufferSource();
+    const src = ctx.createBufferSource();
     src.buffer = buf;
-    src.loop = true;
-    this.noiseGain.gain.cancelScheduledValues(this.ctx.currentTime);
-    this.noiseGain.gain.setValueAtTime(0, this.ctx.currentTime);
-    this.noiseGain.gain.linearRampToValueAtTime(level || 0.7, this.ctx.currentTime + 0.08);
-    src.connect(this.noiseGain);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.6, ctx.currentTime + 0.15);
+    gain.gain.linearRampToValueAtTime(0.1, ctx.currentTime + 2.4);
+    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 3.0);
+    src.connect(gain).connect(ctx.destination);
     src.start();
-    this.noiseSource = src;
-  }
-
-  stopNoise() {
-    if (this.noiseSource) {
-      try { this.noiseSource.stop(); this.noiseSource.disconnect(); } catch (_) {}
-      this.noiseSource = null;
-    }
-    if (this.noiseGain) {
-      this.noiseGain.gain.cancelScheduledValues(this.ctx.currentTime);
-      this.noiseGain.gain.setValueAtTime(0, this.ctx.currentTime);
-    }
-  }
-
-  getFrequency() {
-    if (!this.analyser || !this.freqData) return null;
-    this.analyser.getByteFrequencyData(this.freqData);
-    return this.freqData;
-  }
-
-  get currentTime() {
-    if (!this.buffer) return 0;
-    if (this.playing) return Math.min(this.duration, this.pausedAt + (this.ctx.currentTime - this.startTime));
-    return this.pausedAt;
-  }
-
-  get duration() { return this.buffer ? this.buffer.duration : 0; }
+  } catch (e) { /* no-op */ }
 }
 
-// ══════════════════════════════════════════════════════════════════
-// TERRAIN RENDERER (unchanged from WSI Player)
-// ══════════════════════════════════════════════════════════════════
-class TerrainRenderer {
-  constructor(canvas) {
-    this.canvas = canvas;
-    this.ctx = canvas.getContext('2d');
-    this.buffer = new Float32Array(CFG.terrainLines * CFG.freqSamples);
-    this.beatFlags = new Uint8Array(CFG.terrainLines);
-    this.head = 0;
-    this.frameCount = 0;
-  }
-  resize() {
-    const dpr = window.devicePixelRatio || 1;
-    this.canvas.width = this.canvas.clientWidth * dpr;
-    this.canvas.height = this.canvas.clientHeight * dpr;
-    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-    this.ctx.scale(dpr, dpr);
-    this.w = this.canvas.clientWidth;
-    this.h = this.canvas.clientHeight;
-  }
-  pushFrequency(freqData, beatFlag) {
-    if (!freqData) return;
-    this.frameCount++;
-    if (this.frameCount % CFG.pushEvery !== 0) return;
-    const bins = freqData.length;
-    const offset = this.head * CFG.freqSamples;
-    const spp = Math.floor(bins / CFG.freqSamples);
-    for (let i = 0; i < CFG.freqSamples; i++) {
-      let sum = 0;
-      for (let j = 0; j < spp; j++) sum += freqData[i * spp + j];
-      this.buffer[offset + i] = (sum / spp) / 255;
-    }
-    const bf = beatFlag || 0;
-    this.beatFlags[this.head] = bf;
-    if (bf > 0) {
-      for (let k = 1; k < 10; k++) this.beatFlags[(this.head + k) % CFG.terrainLines] = bf;
-    }
-    this.head = (this.head + 1) % CFG.terrainLines;
-  }
-  render(lineColor, fillColor, accentColor) {
-    const ctx = this.ctx;
-    const w = this.w, h = this.h;
-    ctx.clearRect(0, 0, w, h);
-
-    const totalWidth = w * (CFG._width / 100);
-    const n = CFG.terrainLines;
-    const pts = CFG.freqSamples;
-    const pointSpacing = totalWidth / pts;
-    const hScale = h * 0.0025 * CFG.heightScale;
-
-    const frontX = w * (CFG._posX / 100);
-    const frontY = h * (CFG._posY / 100);
-
-    if (!this._vx || this._vx.length !== n * pts) {
-      this._vx = new Float32Array(n * pts);
-      this._vy = new Float32Array(n * pts);
-    }
-    const vx = this._vx, vy = this._vy;
-
-    for (let i = 0; i < n; i++) {
-      const bufIdx = (this.head + i) % n;
-      const backness = n - 1 - i;
-      const xStart = frontX + backness * CFG.isoOffsetX;
-      const yBase = frontY - backness * CFG.isoOffsetY;
-      for (let j = 0; j < pts; j++) {
-        const amp = this.buffer[bufIdx * pts + j];
-        vx[i * pts + j] = xStart + j * pointSpacing;
-        vy[i * pts + j] = yBase - amp * amp * hScale * 100;
-      }
-    }
-
-    for (let i = 0; i < n; i++) {
-      const bufIdx = (this.head + i) % n;
-      const depth = i / n;
-      const backness = n - 1 - i;
-      const flag = this.beatFlags[bufIdx];
-      const xStart = frontX + backness * CFG.isoOffsetX;
-      const yBase = frontY - backness * CFG.isoOffsetY;
-      const alpha = CFG.opacityBack + (CFG.opacityFront - CFG.opacityBack) * depth;
-
-      ctx.beginPath();
-      ctx.moveTo(xStart, yBase);
-      for (let j = 0; j < pts; j++) ctx.lineTo(vx[i * pts + j], vy[i * pts + j]);
-      ctx.lineTo(xStart + totalWidth, yBase);
-      ctx.closePath();
-      ctx.fillStyle = fillColor;
-      ctx.fill();
-
-      const color = flag === 2 ? accentColor : lineColor;
-      const lineAlpha = flag === 2 ? Math.min(alpha * 2.5, 1) : flag === 1 ? Math.min(alpha * 1.4, 1) : alpha;
-      ctx.strokeStyle = color;
-      ctx.globalAlpha = lineAlpha;
-      ctx.lineWidth = flag === 2 ? CFG.lineWidth * 1.8 : CFG.lineWidth;
-      ctx.stroke();
-      ctx.globalAlpha = 1;
-    }
-  }
+// most browsers block autoplay until user gesture — arm on first interaction
+let armed = false;
+function armAndGo() {
+  if (armed) return;
+  armed = true;
+  playTuneInSound();
 }
+document.addEventListener('click', armAndGo, { once: true });
+document.addEventListener('keydown', armAndGo, { once: true });
+document.addEventListener('touchstart', armAndGo, { once: true });
 
-// ══════════════════════════════════════════════════════════════════
-// BPM DETECTOR (unchanged)
-// ══════════════════════════════════════════════════════════════════
-class BPMDetector {
-  constructor() {
-    this.onsetBuffer = new Float32Array(300);
-    this.onsetHead = 0;
-    this.prevSpectrum = null;
-    this.bpm = 0;
-    this.frameCount = 0;
-    this._lastBeatNum = -1;
-  }
-  process(freqData) {
-    if (!freqData) return;
-    this.frameCount++;
-    const len = Math.min(freqData.length, 512);
-    if (!this.prevSpectrum) {
-      this.prevSpectrum = new Float32Array(len);
-      for (let i = 0; i < len; i++) this.prevSpectrum[i] = freqData[i];
-      return;
-    }
-    let flux = 0;
-    for (let i = 0; i < len; i++) {
-      const diff = freqData[i] - this.prevSpectrum[i];
-      if (diff > 0) flux += diff;
-      this.prevSpectrum[i] = freqData[i];
-    }
-    this.onsetBuffer[this.onsetHead] = flux;
-    this.onsetHead = (this.onsetHead + 1) % this.onsetBuffer.length;
-    if (this.frameCount % CFG.bpmUpdateInterval === 0 && this.frameCount > 150) this._calcBPM();
-  }
-  getBeatFlag(currentTime) {
-    if (this.bpm <= 0 || !currentTime) return 0;
-    const beatInterval = 60 / this.bpm;
-    const beatNum = Math.floor(currentTime / beatInterval);
-    if (beatNum === this._lastBeatNum) return 0;
-    this._lastBeatNum = beatNum;
-    return (beatNum % 4 === 0) ? 2 : 1;
-  }
-  _calcBPM() {
-    const buf = this.onsetBuffer;
-    const n = buf.length;
-    const fps = 30;
-    const minLag = Math.floor(60 / 200 * fps);
-    const maxLag = Math.floor(60 / 60 * fps);
-    let bestLag = minLag;
-    let bestR = -Infinity;
-    for (let lag = minLag; lag <= maxLag; lag++) {
-      let r = 0;
-      for (let i = 0; i < n; i++) r += buf[i] * buf[(i + lag) % n];
-      if (r > bestR) { bestR = r; bestLag = lag; }
-    }
-    let newBpm = Math.round(60 / (bestLag / fps));
-    if (newBpm < 80 && newBpm * 2 <= 200) newBpm *= 2;
-    if (this.bpm === 0 || Math.abs(newBpm - this.bpm) / this.bpm < 0.08) {
-      this.bpm = newBpm;
-    } else {
-      if (!this._pendingBpm) this._pendingBpm = 0;
-      if (!this._pendingCount) this._pendingCount = 0;
-      if (Math.abs(newBpm - this._pendingBpm) / (this._pendingBpm || 1) < 0.08) {
-        this._pendingCount++;
-        if (this._pendingCount >= 3) { this.bpm = newBpm; this._pendingCount = 0; }
-      } else { this._pendingBpm = newBpm; this._pendingCount = 1; }
-    }
-  }
-}
-
-// ══════════════════════════════════════════════════════════════════
-// KEY DETECTOR (unchanged)
-// ══════════════════════════════════════════════════════════════════
-class KeyDetector {
-  constructor(sampleRate) {
-    this.sampleRate = sampleRate || 44100;
-    this.chroma = new Float32Array(12);
-    this.frameCount = 0;
-    this.key = '';
-    this.noteNames = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
-    this.majorProfile = [6.35,2.23,3.48,2.33,4.38,4.09,2.52,5.19,2.39,3.66,2.29,2.88];
-    this.minorProfile = [6.33,2.68,3.52,5.38,2.60,3.53,2.54,4.75,3.98,2.69,3.34,3.17];
-  }
-  process(freqData, fftSize) {
-    if (!freqData) return;
-    this.frameCount++;
-    const binHz = this.sampleRate / fftSize;
-    for (let i = 1; i < freqData.length; i++) {
-      const freq = i * binHz;
-      if (freq < 60 || freq > 4200) continue;
-      const noteNum = 12 * Math.log2(freq / 440) + 69;
-      const pc = ((Math.round(noteNum) % 12) + 12) % 12;
-      this.chroma[pc] += freqData[i] / 255;
-    }
-    if (this.frameCount % CFG.keyUpdateInterval === 0 && this.frameCount > 100) this._detectKey();
-  }
-  _detectKey() {
-    let bestCorr = -Infinity, bestKey = '';
-    for (let shift = 0; shift < 12; shift++) {
-      let corrMaj = 0, corrMin = 0;
-      for (let i = 0; i < 12; i++) {
-        const c = this.chroma[(i + shift) % 12];
-        corrMaj += c * this.majorProfile[i];
-        corrMin += c * this.minorProfile[i];
-      }
-      if (corrMaj > bestCorr) { bestCorr = corrMaj; bestKey = this.noteNames[shift]; }
-      if (corrMin > bestCorr) { bestCorr = corrMin; bestKey = this.noteNames[shift] + 'm'; }
-    }
-    this.key = bestKey;
-  }
-  reset() { this.chroma.fill(0); this.frameCount = 0; this.key = ''; }
-}
-
-// ══════════════════════════════════════════════════════════════════
-// MAIN
-// ══════════════════════════════════════════════════════════════════
-const engine = new AudioEngine();
-const canvas = document.getElementById('viz');
-const terrain = new TerrainRenderer(canvas);
-let bpmDetector = new BPMDetector();
-let keyDetector = null;
-
-const $ = id => document.getElementById(id);
-const btnPlay = $('btnPlay'), btnScan = $('btnScan');
-const tuningBar = $('tuningBar'), tuningProg = $('tuningProg'), tuningNeedle = $('tuningNeedle');
-const trackName = $('trackName'), trackTime = $('trackTime');
-const freqNum = $('freqNum'), freqReadout = $('freqReadout');
-const bpmVal = $('bpmVal'), keyVal = $('keyVal');
-const signalBars = $('signalBars'), signalMode = $('signalMode');
-const loadingEl = $('loading'), loadStatus = $('loadStatus');
-const qbtnNormal = $('qbtnNormal'), qbtnHighfi = $('qbtnHighfi');
-const toastEl = $('toast');
-
-function setLoadStatus(key) { loadStatus.textContent = t(key); }
-function hideLoading() { loadingEl.classList.add('hidden'); setTimeout(() => loadingEl.style.display = 'none', 600); }
-
-let _toastTimer = null;
-function toast(msg, dur) {
-  toastEl.textContent = msg;
-  toastEl.classList.add('show');
-  if (_toastTimer) clearTimeout(_toastTimer);
-  _toastTimer = setTimeout(() => toastEl.classList.remove('show'), dur || 1800);
-}
-
-function fmt(sec) {
-  if (!isFinite(sec) || sec < 0) sec = 0;
-  const m = Math.floor(sec / 60), s = Math.floor(sec % 60);
-  return m + ':' + s.toString().padStart(2, '0');
-}
-
-// deterministic "frequency" per track — looks like a radio dial
-function freqForTrack(idx) {
-  if (idx < 0) return '88.1';
-  const seed = (idx * 37 + 13) % 120;
-  return (85.0 + seed * 0.3).toFixed(1);
-}
-
-function updatePlayBtn() {
-  const btn = btnPlay;
-  btn.textContent = engine.playing ? t('pause') : t('play');
-}
-
-function renderTicks() {
-  const el = $('tuningTicks');
-  el.innerHTML = '';
-  for (let i = 0; i <= 40; i++) {
-    const s = document.createElement('span');
-    if (i % 5 === 0) s.className = 'major';
-    el.appendChild(s);
-  }
-}
-renderTicks();
-
-// ── tuning bar click to seek ──
-tuningBar.addEventListener('click', e => {
-  if (!engine.buffer) return;
-  const rect = tuningBar.getBoundingClientRect();
-  const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-  engine.seek(pct);
-});
-
-// ── hamburger menu ──
-const hamBtn = $('bar-hamburger'), barMenu = $('bar-menu');
-hamBtn.addEventListener('click', e => {
-  e.stopPropagation();
-  barMenu.classList.toggle('open');
-});
-document.addEventListener('click', e => {
-  if (!barMenu.contains(e.target) && !hamBtn.contains(e.target)) barMenu.classList.remove('open');
-});
-document.querySelectorAll('.bar-menu [data-lang-btn]').forEach(b => {
-  b.addEventListener('click', () => {
-    applyLang(b.dataset.langBtn);
-    barMenu.classList.remove('open');
-  });
-});
-
-// ── play/pause (lazy-loads on first click since we defer fetch until user gesture) ──
-btnPlay.addEventListener('click', async () => {
-  engine.init();
-  await engine.resume();
-  if (!engine.buffer) {
-    if (Registry.currentIdx < 0 && Registry.tracks.length) {
-      Registry.currentIdx = Registry.pickRandomIdx();
-      applyMeta(Registry.currentIdx);
-    }
-    if (Registry.currentIdx >= 0) await loadTrack(Registry.currentIdx, { autoplay: true });
-    updatePlayBtn();
-    return;
-  }
-  if (engine.playing) engine.pause();
-  else await engine.play();
-  updatePlayBtn();
-});
-
-// ── quality toggle ──
-function setQuality(q) {
-  if (q !== 'normal' && q !== 'highfi') q = 'normal';
-  Registry.quality = q;
-  localStorage.setItem('td-radio-quality', q);
-  qbtnNormal.classList.toggle('active', q === 'normal');
-  qbtnHighfi.classList.toggle('active', q === 'highfi');
-}
-qbtnNormal.addEventListener('click', async () => {
-  if (Registry.quality === 'normal') return;
-  setQuality('normal');
-  if (Registry.currentIdx >= 0) await reloadCurrent();
-});
-qbtnHighfi.addEventListener('click', async () => {
-  if (Registry.quality === 'highfi') return;
-  setQuality('highfi');
-  if (Registry.currentIdx >= 0) await reloadCurrent();
-});
-setQuality(Registry.quality);
-
-// ── metadata display ──
-function applyMeta(idx) {
-  $('m-signal').textContent = Registry.metaFor(idx, 'signal') || '---';
-  $('m-decoder').textContent = Registry.metaFor(idx, 'decoder') || '---';
-  $('m-status').textContent = Registry.metaFor(idx, 'status') || '---';
-  $('m-access').textContent = Registry.metaFor(idx, 'access') || '---';
-  $('m-origin').textContent = Registry.metaFor(idx, 'origin') || '---';
-  trackName.textContent = Registry.metaFor(idx, 'signal') || '---';
-  const f = freqForTrack(idx);
-  freqNum.textContent = f;
-  freqReadout.textContent = f + ' MHz';
-}
-
-async function reloadCurrent() {
-  if (Registry.currentIdx < 0) return;
-  const url = Registry.urlFor(Registry.currentIdx);
-  if (!url) return;
-  const wasPlaying = engine.playing;
-  const offset = engine.currentTime;
-  try {
-    await engine.loadUrl(url);
-    if (wasPlaying) engine._startAt(Math.min(offset, engine.duration - 0.1), 0);
-    updatePlayBtn();
-  } catch (e) { toast(t('failed')); }
-}
-
-async function loadTrack(idx, options) {
-  options = options || {};
-  const url = Registry.urlFor(idx);
-  if (!url) { toast(t('no-signal')); return false; }
-  try {
-    await engine.loadUrl(url);
-    Registry.currentIdx = idx;
-    applyMeta(idx);
-    // fresh analyzers for new track
-    bpmDetector = new BPMDetector();
-    keyDetector = new KeyDetector(engine.ctx ? engine.ctx.sampleRate : 44100);
-    if (options.autoplay) {
-      await engine.play();
-    }
-    updatePlayBtn();
-    return true;
-  } catch (e) {
-    toast(t('failed'));
-    return false;
-  }
-}
-
-// ── SCAN: noise → crossfade to next random track ──
-let _scanInFlight = false;
-btnScan.addEventListener('click', async () => {
-  if (_scanInFlight) return;
-  if (!Registry.tracks.length) { toast(t('no-signal')); return; }
-  _scanInFlight = true;
-  btnScan.classList.add('active');
-  signalMode.textContent = t('scanning');
-  freqNum.classList.add('tuning');
-
-  // pick random (not current)
-  const nextIdx = Registry.pickRandomIdx();
-
-  // cue up static noise
-  engine.init();
-  await engine.resume();
-  engine.startNoise(0.55);
-
-  // tween freq number for ~1s while "tuning"
-  const tuneDur = 900;  // ms
-  const tuneStart = performance.now();
-  const tuneInterval = setInterval(() => {
-    const f = (85 + Math.random() * 24).toFixed(1);
-    freqNum.textContent = f;
-    if (performance.now() - tuneStart > tuneDur) clearInterval(tuneInterval);
-  }, 60);
-
-  // kick fetch/decode in parallel
-  let decodeOk = false;
-  try {
-    const url = Registry.urlFor(nextIdx);
-    if (url) {
-      await engine.loadUrl(url);
-      decodeOk = true;
-    }
-  } catch (e) { decodeOk = false; }
-
-  // ensure at least tuneDur ms of noise before fade
-  const elapsed = performance.now() - tuneStart;
-  if (elapsed < tuneDur) await new Promise(r => setTimeout(r, tuneDur - elapsed));
-
-  clearInterval(tuneInterval);
-
-  if (decodeOk) {
-    Registry.currentIdx = nextIdx;
-    applyMeta(nextIdx);
-    bpmDetector = new BPMDetector();
-    keyDetector = new KeyDetector(engine.ctx.sampleRate);
-    engine.crossfadeToTrack(0, 0.4);
-    updatePlayBtn();
-  } else {
-    engine.stopNoise();
-    toast(t('failed'));
-  }
-
-  freqNum.classList.remove('tuning');
-  btnScan.classList.remove('active');
-  signalMode.textContent = t('on-air');
-  _scanInFlight = false;
-});
-
-// ── resize ──
-function onResize() { terrain.resize(); }
-window.addEventListener('resize', onResize);
-onResize();
-
-// ── disable right-click on the canvas + audio area (discouragement only) ──
-document.addEventListener('contextmenu', e => {
-  // allow context menu on links and inputs so users can still right-click a hyperlink
-  const t = e.target;
-  if (t.closest('a') || t.tagName === 'INPUT') return;
-  e.preventDefault();
-});
-// block drag on the canvas (prevents "save image as" flow)
-canvas.addEventListener('dragstart', e => e.preventDefault());
-
-// ── signal bars: audio-level reactive meter ──
-function updateSignalBars(freq) {
-  if (!freq) {
-    signalBars.querySelectorAll('span').forEach(s => s.classList.remove('on'));
-    return;
-  }
-  // RMS of lower 1/3 bins
-  let sum = 0;
-  const n = Math.floor(freq.length / 3);
-  for (let i = 0; i < n; i++) sum += freq[i];
-  const avg = sum / n / 255;
-  const lit = Math.min(5, Math.round(avg * 6));
-  const spans = signalBars.querySelectorAll('span');
-  spans.forEach((s, i) => s.classList.toggle('on', i < lit));
-}
-
-// ══════════════════════════════════════════════════════════════════
-// ANIMATION LOOP
-// ══════════════════════════════════════════════════════════════════
-let _pendingBeat = 0;
-function loop() {
-  requestAnimationFrame(loop);
-  const freq = engine.getFrequency();
-  if (freq && engine.playing) {
-    bpmDetector.process(freq);
-    const b = bpmDetector.getBeatFlag(engine.currentTime);
-    if (b > _pendingBeat) _pendingBeat = b;
-    if (keyDetector) keyDetector.process(freq, CFG.fftSize);
-  }
-  terrain.pushFrequency(freq, _pendingBeat);
-  if (terrain.frameCount % CFG.pushEvery === 0) _pendingBeat = 0;
-
-  const lineColor = getComputedStyle(document.documentElement).getPropertyValue('--line-color').trim();
-  const fillColor = getComputedStyle(document.documentElement).getPropertyValue('--fill-color').trim();
-  const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
-  terrain.render(lineColor, fillColor, accentColor);
-
-  // UI
-  const cur = engine.currentTime, dur = engine.duration;
-  if (dur > 0) {
-    const pct = cur / dur;
-    tuningProg.style.width = (pct * 100) + '%';
-    tuningNeedle.style.left = (pct * 100) + '%';
-    trackTime.textContent = fmt(cur) + ' / ' + fmt(dur);
-  } else {
-    tuningProg.style.width = '0%';
-    tuningNeedle.style.left = '0%';
-    trackTime.textContent = '0:00 / 0:00';
-  }
-  if (bpmDetector.bpm > 0) bpmVal.textContent = bpmDetector.bpm;
-  if (keyDetector && keyDetector.key) keyVal.textContent = keyDetector.key;
-
-  updateSignalBars(freq);
-}
-loop();
-
-// ══════════════════════════════════════════════════════════════════
-// BOOT
-// ══════════════════════════════════════════════════════════════════
-(async function boot() {
-  applyLang(currentLang);
-  setLoadStatus('contacting');
-  // dots animation during load
-  const dotsEl = $('loadDots');
-  const dotsTimer = setInterval(() => {
-    const d = dotsEl.textContent;
-    dotsEl.textContent = d.length >= 3 ? '.' : d + '.';
-  }, 300);
-
-  await Registry.init();
-
-  if (Registry.mode === 'offline') {
-    // hi-fi not meaningful offline — disable
-    qbtnHighfi.disabled = true;
-    qbtnHighfi.title = 'Offline fallback — single quality';
-    signalMode.textContent = t('offline-mode').replace(/·.*/, '·').trim() + ' OFFLINE';
-  } else {
-    signalMode.textContent = t('on-air');
-  }
-
-  // load first random track (but do not autoplay; wait for user gesture)
-  if (Registry.tracks.length) {
-    const idx = Registry.pickRandomIdx();
-    // start engine on first user gesture to comply with autoplay policies
-    applyMeta(idx);
-    Registry.currentIdx = idx;
-    // don't fetch until user clicks play/scan (avoids wasting bandwidth)
-  }
-
-  clearInterval(dotsTimer);
-  hideLoading();
-})();
-
+// auto-redirect (meta-refresh is the fallback; do it via JS at ~3.4s for smoother transition)
+setTimeout(() => {
+  window.location.href = 'https://twysted.afest.io/radio/';
+}, 3400);
 </script>
 </body>
 </html>
