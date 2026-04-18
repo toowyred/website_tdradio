@@ -23,6 +23,9 @@
     --fg: #e6e6e6;
     --muted: #888;
     --dim: #555;
+    /* LED lock green: matches orange luminance, not golden_green palette */
+    --lock-green: #39d353;
+    --lock-green-dim: rgba(57,211,83,0.35);
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -36,7 +39,7 @@
     cursor: pointer;
   }
 
-  /* grid-bg + vignette (identical to TD-radio for continuity) */
+  /* grid-bg + vignette */
   body::before {
     content:''; position:fixed; inset:0; z-index:0; pointer-events:none;
     background-image:
@@ -58,7 +61,6 @@
     100% { transform: translateY(3px); }
   }
 
-  /* tuning interference overlay */
   .static-overlay {
     position: fixed; inset: 0; z-index: 1; pointer-events: none;
     opacity: 0.22; mix-blend-mode: screen;
@@ -86,19 +88,28 @@
     padding: 0 20px;
   }
 
-  /* LED frequency numbers (big) */
+  /* LED frequency numbers (big) — number has a fixed-width slot so MHz never shifts */
   .freq-display {
     display: flex; align-items: baseline; justify-content: center;
     gap: 12px; margin-bottom: 16px;
     font-family: 'Courier New', monospace;
   }
   .freq-num {
+    display: inline-block;
+    min-width: 2.8em;        /* enough for "103.4" — holds slot while digits shuffle */
+    text-align: right;       /* right-anchor so the edge kissing MHz stays put */
     font-size: clamp(56px, 14vw, 120px);
     letter-spacing: 6px; font-weight: bold;
     color: var(--accent);
     text-shadow: 0 0 20px var(--accent-dim), 0 0 40px var(--accent-dim);
     font-feature-settings: "tnum";
     animation: freq-tune 0.12s steps(2) infinite;
+    transition: color 0.35s ease, text-shadow 0.35s ease;
+  }
+  .freq-num.locked {
+    color: var(--lock-green);
+    text-shadow: 0 0 20px var(--lock-green-dim), 0 0 40px var(--lock-green-dim);
+    animation: none;
   }
   .freq-unit {
     font-size: clamp(16px, 3vw, 24px);
@@ -118,8 +129,16 @@
   .sub {
     font-size: clamp(10px, 1.6vw, 13px);
     letter-spacing: 3px; text-transform: uppercase;
-    color: var(--muted); margin-bottom: 36px;
+    color: var(--muted); margin-bottom: 30px;
   }
+  .sub .sub-line-1 { margin-bottom: 4px; }
+  .sub .sub-line-2 {
+    color: var(--dim); letter-spacing: 2px; font-style: italic;
+    text-transform: none;
+    min-height: 1.2em;
+    transition: opacity 0.2s ease;
+  }
+  .sub .sub-line-2.fading { opacity: 0.15; }
 
   /* tuning dial */
   .dial {
@@ -181,6 +200,26 @@
   .status .blink { color: var(--accent); animation: blink 0.8s steps(2) infinite; }
   @keyframes blink { 50% { opacity: 0.2; } }
 
+  /* sound toggle (under status) */
+  .sound-ctrl {
+    margin-top: 12px;
+    font-size: 10px; letter-spacing: 3px; text-transform: uppercase;
+    color: var(--dim); font-family: 'Courier New', monospace;
+    display: inline-flex; gap: 6px; align-items: center; justify-content: center;
+    cursor: pointer; user-select: none;
+    padding: 4px 8px;
+    transition: color 0.15s;
+  }
+  .sound-ctrl:hover { color: var(--muted); }
+  .sound-ctrl .sc-label { color: var(--muted); margin-right: 2px; }
+  .sound-ctrl .sc-opt { color: var(--dim); transition: color 0.2s, text-shadow 0.2s; }
+  .sound-ctrl .sc-opt.active {
+    color: var(--accent);
+    text-shadow: 0 0 6px var(--accent-dim);
+  }
+  .sound-ctrl .sc-sep { color: var(--dim); opacity: 0.5; }
+  .sound-ctrl .sc-hint { font-size: 8px; color: var(--dim); opacity: 0.55; margin-left: 4px; letter-spacing: 2px; }
+
   /* signal bars */
   .signal-bars {
     display: inline-flex; gap: 2px; align-items: flex-end; height: 10px;
@@ -200,23 +239,40 @@
   .signal-bars.lv4 span:nth-child(-n+4) { background: var(--accent); }
   .signal-bars.lv5 span:nth-child(-n+5) { background: var(--accent); }
 
-  /* manual link fallback */
+  /* manual link fallback — enter-station on its own line so it doesn't shift with translation width */
   .manual {
-    position: fixed; bottom: 24px; left: 50%;
+    position: fixed; bottom: 22px; left: 50%;
     transform: translateX(-50%);
     z-index: 3;
-    font-size: 10px; letter-spacing: 3px; text-transform: uppercase;
+    text-align: center;
     color: var(--dim);
+    max-width: 92vw;
   }
-  .manual a { color: var(--muted); text-decoration: none; border-bottom: 1px dotted currentColor; transition: color 0.2s; }
+  .manual .manual-msg {
+    display: block;
+    font-size: 10px; letter-spacing: 3px; text-transform: uppercase;
+    margin-bottom: 8px; min-height: 1.2em;
+    transition: opacity 0.2s ease;
+    white-space: normal;
+  }
+  .manual .manual-msg.fading { opacity: 0.15; }
+  .manual a {
+    display: inline-block;
+    font-size: 10px; letter-spacing: 3px; text-transform: uppercase;
+    color: var(--muted); text-decoration: none;
+    border-bottom: 1px dotted currentColor;
+    padding-bottom: 2px;
+    transition: color 0.2s;
+  }
   .manual a:hover { color: var(--accent); }
 
-  /* footer */
+  /* footer — matches sub-line-1 sizing for balance */
   .foot {
     position: fixed; top: 18px; left: 50%;
     transform: translateX(-50%);
-    font-size: 9px; letter-spacing: 4px; text-transform: uppercase;
-    color: var(--dim);
+    font-size: clamp(10px, 1.6vw, 13px);
+    letter-spacing: 3px; text-transform: uppercase;
+    color: var(--muted);
   }
 
   /* noise flash on enter */
@@ -237,15 +293,18 @@
   <div class="static-overlay"></div>
   <div class="flash"></div>
 
-  <div class="foot">radio.afest.io &middot; band 88&ndash;108</div>
+  <div class="foot" translate="no">AFEST STUDIO</div>
 
   <div class="wrap">
     <div class="freq-display">
       <span class="freq-num" id="freqNum">88.8</span>
       <span class="freq-unit">MHz</span>
     </div>
-    <div class="title">TWISTED<span class="dot"> &bull; </span>DUALITY</div>
-    <div class="sub">Radio Receiver &middot; Tuning In</div>
+    <div class="title" translate="no">TWISTED<span class="dot"> &bull; </span>DUALITY</div>
+    <div class="sub">
+      <div class="sub-line-1" translate="no">Radio Receiver &middot; Tuning In</div>
+      <div class="sub-line-2" id="waitMsg" lang="en">Please wait for signal</div>
+    </div>
 
     <div class="dial">
       <div class="dial-ticks" id="dialTicks"></div>
@@ -254,15 +313,24 @@
 
     <div class="status">
       <span class="bracket">[</span>
-      <span id="statusText">LOCATING SIGNAL</span>
+      <span id="statusText" translate="no">LOCATING SIGNAL</span>
       <span class="signal-bars lv1" id="bars"><span></span><span></span><span></span><span></span><span></span></span>
       <span class="bracket">]</span>
       <span class="blink">&#9632;</span>
     </div>
+
+    <div class="sound-ctrl" id="soundCtrl" role="button" tabindex="0" title="Toggle sound (SPACE)">
+      <span class="sc-label">SOUND:</span>
+      <span class="sc-opt active" data-opt="off">OFF</span>
+      <span class="sc-sep">|</span>
+      <span class="sc-opt" data-opt="on">ON</span>
+      <span class="sc-hint">(SPACE)</span>
+    </div>
   </div>
 
   <div class="manual">
-    If you are not redirected: <a href="https://twysted.afest.io/radio/">enter station</a>
+    <span class="manual-msg" id="manualMsg" lang="en">If the page does not auto-redirect:</span>
+    <a href="https://twysted.afest.io/radio/">enter station</a>
   </div>
 
 <script>
@@ -278,91 +346,251 @@
   }
 })();
 
-// ── frequency flicker + status ──
+// ── refs ──
 const freqNum = document.getElementById('freqNum');
 const statusText = document.getElementById('statusText');
 const bars = document.getElementById('bars');
+const waitMsg = document.getElementById('waitMsg');
+const manualMsg = document.getElementById('manualMsg');
+const soundCtrl = document.getElementById('soundCtrl');
 
-const STATUSES = [
-  'LOCATING SIGNAL',
-  'SCANNING BAND',
-  'RECEIVING',
-  'LOCKED',
-];
+// ── visitor-specific lock frequency ──
+// Deterministic per (timezone + browser locale). Nothing leaves the device;
+// the hash is computed client-side and only drives the settled station number.
+function stationForVisitor() {
+  const tz = (Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
+  const lang = (navigator.language || 'en').toLowerCase();
+  const seed = tz + '|' + lang;
+  // FNV-1a 32-bit
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = (h * 16777619) >>> 0;
+  }
+  // map to 88.0–107.9 in 0.1 steps (200 slots)
+  const slot = h % 200;
+  return (88 + slot * 0.1).toFixed(1);
+}
+const LOCK_FREQ = stationForVisitor();
 
+// ── frequency flicker + status ──
+const STATUSES = ['LOCATING SIGNAL', 'SCANNING BAND', 'RECEIVING', 'LOCKED'];
 let startedAt = Date.now();
 const totalMs = 3200;
+let locked = false;
 
 function tick() {
   const t = (Date.now() - startedAt) / totalMs;
   if (t >= 1) {
-    freqNum.textContent = '103.4';
-    statusText.textContent = STATUSES[3];
-    bars.className = 'signal-bars lv5';
+    if (!locked) {
+      locked = true;
+      freqNum.textContent = LOCK_FREQ;
+      freqNum.classList.add('locked');
+      statusText.textContent = STATUSES[3];
+      bars.className = 'signal-bars lv5';
+    }
     return;
   }
-  // freq wandering: random jumps until near-end, then settle
+  // freq wandering
   if (t < 0.85) {
     const base = 88 + Math.random() * 20;
     freqNum.textContent = base.toFixed(1);
   } else {
-    // settle toward 103.4
     const settle = (t - 0.85) / 0.15;
-    const v = 88 + Math.random() * 20 * (1 - settle) + 103.4 * settle;
+    const target = parseFloat(LOCK_FREQ);
+    const v = 88 + Math.random() * 20 * (1 - settle) + target * settle;
     freqNum.textContent = Math.min(107.9, Math.max(88, v)).toFixed(1);
   }
-  // status text advances
   const idx = Math.min(STATUSES.length - 1, Math.floor(t * STATUSES.length));
   statusText.textContent = STATUSES[idx];
-  // signal bars grow
   const lv = Math.min(5, 1 + Math.floor(t * 5));
   bars.className = 'signal-bars lv' + lv;
   requestAnimationFrame(tick);
 }
 tick();
 
-// ── WebAudio: radio static during tune-in ──
-let ctx = null;
-function playTuneInSound() {
-  try {
-    ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const sr = ctx.sampleRate;
-    const dur = 3.2;
-    const len = Math.floor(sr * dur);
-    const buf = ctx.createBuffer(2, len, sr);
-    for (let ch = 0; ch < 2; ch++) {
-      const d = buf.getChannelData(ch);
-      let b0=0,b1=0,b2=0;
-      for (let i = 0; i < len; i++) {
-        const white = Math.random() * 2 - 1;
-        b0 = 0.99765*b0 + white*0.0990460;
-        b1 = 0.96300*b1 + white*0.2965164;
-        b2 = 0.57000*b2 + white*1.0526913;
-        d[i] = (b0 + b1 + b2 + white * 0.1848) * 0.12;
-      }
-    }
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0, ctx.currentTime);
-    gain.gain.linearRampToValueAtTime(0.6, ctx.currentTime + 0.15);
-    gain.gain.linearRampToValueAtTime(0.1, ctx.currentTime + 2.4);
-    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 3.0);
-    src.connect(gain).connect(ctx.destination);
-    src.start();
-  } catch (e) { /* no-op */ }
+// ── multilingual cycle for wait-msg + manual-msg + sound-ctrl ──
+// Each entry also carries localised SOUND / OFF / ON / SPACE labels.
+const LANGS = [
+  {
+    code: 'en',
+    wait: 'Please wait for signal',
+    manual: 'If the page does not auto-redirect:',
+    sound: { label: 'SOUND', off: 'OFF', on: 'ON', hint: '(SPACE)' }
+  },
+  {
+    code: 'ja',
+    wait: '\u97F3\u58F0\u4FE1\u53F7\u3092\u304A\u5F85\u3061\u304F\u3060\u3055\u3044\u3002',  // 音声信号をお待ちください。
+    manual: '\u30DA\u30FC\u30B8\u304C\u81EA\u52D5\u3067\u8EE2\u9001\u3055\u308C\u306A\u3044\u5834\u5408\uFF1A', // ページが自動で転送されない場合:
+    sound: { label: '\u97F3\u58F0', off: '\u30AA\u30D5', on: '\u30AA\u30F3', hint: '(\u30B9\u30DA\u30FC\u30B9)' }  // 音声 | オフ | オン | (スペース)
+  },
+  {
+    code: 'vi',
+    wait: 'Xin vui l\u00F2ng ch\u1EDD t\u00EDn hi\u1EC7u',
+    manual: 'N\u1EBFu trang kh\u00F4ng t\u1EF1 chuy\u1EC3n h\u01B0\u1EDBng:',  // Nếu trang không tự chuyển hướng:
+    sound: { label: '\u00C2M THANH', off: 'T\u1EAET', on: 'B\u1EACT', hint: '(PH\u00CDM C\u00C1CH)' }  // ÂM THANH | TẮT | BẬT | (PHÍM CÁCH)
+  },
+  {
+    code: 'de',
+    wait: 'Bitte warten Sie auf das Funksignal.',
+    manual: 'Falls die Seite nicht automatisch weiterleitet:',
+    sound: { label: 'TON', off: 'AUS', on: 'EIN', hint: '(LEERTASTE)' }
+  },
+  {
+    code: 'fr',
+    wait: 'Attendez le signal radio.',
+    manual: 'Si la page ne redirige pas automatiquement :',
+    sound: { label: 'SON', off: 'OFF', on: 'ON', hint: '(ESPACE)' }
+  },
+  {
+    code: 'zh',
+    wait: '\u8ACB\u7B49\u5F85\u5EE3\u64AD\u8A0A\u865F\u3002',  // 請等待廣播訊號。
+    manual: '\u82E5\u9801\u9762\u672A\u81EA\u52D5\u8DF3\u8F49\uFF1A',  // 若頁面未自動跳轉：
+    sound: { label: '\u8072\u97F3', off: '\u95DC', on: '\u958B', hint: '(\u7A7A\u767D\u9375)' }  // 聲音 | 關 | 開 | (空白鍵)
+  },
+  {
+    code: 'es',
+    wait: 'Por favor, espere la se\u00F1al de radio.',
+    manual: 'Si la p\u00E1gina no redirige autom\u00E1ticamente:',
+    sound: { label: 'SONIDO', off: 'OFF', on: 'ON', hint: '(ESPACIO)' }
+  },
+  {
+    code: 'haw',
+    wait: 'E \u02BBolu\u02BBolu e kali no ke kani leki\u014D.',
+    manual: 'In\u0101 \u02BBa\u02BBole e ho\u02BBokuhikuhi pololei ka \u02BBao\u02BBao:',
+    sound: { label: 'KANI', off: 'PAU', on: 'HO\u02BBOLOHE', hint: '(SPACE)' }
+  },
+  {
+    code: 'tl',
+    wait: 'Mangyaring maghintay para sa signal ng radyo.',
+    manual: 'Kung hindi awtomatikong nagre-redirect ang pahina:',
+    sound: { label: 'TUNOG', off: 'PATAY', on: 'BUKAS', hint: '(ESPASYO)' }
+  },
+];
+
+// pick a starting index matching the browser locale (fallback: en)
+function detectLangIdx() {
+  const raw = (navigator.language || navigator.userLanguage || 'en').toLowerCase();
+  const prefix = raw.split('-')[0];
+  // special fallback: fil-PH (Filipino) maps to Tagalog
+  if (prefix === 'fil') {
+    const i = LANGS.findIndex(l => l.code === 'tl');
+    if (i >= 0) return i;
+  }
+  const i = LANGS.findIndex(l => l.code === prefix);
+  return i >= 0 ? i : 0;
 }
 
-// most browsers block autoplay until user gesture — arm on first interaction
-let armed = false;
-function armAndGo() {
-  if (armed) return;
-  armed = true;
-  playTuneInSound();
+const localLangIdx = detectLangIdx();
+let langIdx = localLangIdx;
+
+// ── sound-ctrl: pinned to the visitor's local lang (no cycling → no jiggle) ──
+(function applyLocalSoundCtrl() {
+  const L = LANGS[localLangIdx];
+  const scLabelEl = soundCtrl.querySelector('.sc-label');
+  const scOffEl   = soundCtrl.querySelector('.sc-opt[data-opt="off"]');
+  const scOnEl    = soundCtrl.querySelector('.sc-opt[data-opt="on"]');
+  const scHintEl  = soundCtrl.querySelector('.sc-hint');
+  scLabelEl.textContent = L.sound.label + ':';
+  scOffEl.textContent   = L.sound.off;
+  scOnEl.textContent    = L.sound.on;
+  scHintEl.textContent  = L.sound.hint;
+  soundCtrl.setAttribute('lang', L.code);
+})();
+
+function applyLang() {
+  const L = LANGS[langIdx];
+  waitMsg.classList.add('fading');
+  manualMsg.classList.add('fading');
+  setTimeout(() => {
+    waitMsg.textContent = L.wait;
+    waitMsg.setAttribute('lang', L.code);
+    manualMsg.textContent = L.manual;
+    manualMsg.setAttribute('lang', L.code);
+    waitMsg.classList.remove('fading');
+    manualMsg.classList.remove('fading');
+  }, 200);
+  langIdx = (langIdx + 1) % LANGS.length;
 }
-document.addEventListener('click', armAndGo, { once: true });
-document.addEventListener('keydown', armAndGo, { once: true });
-document.addEventListener('touchstart', armAndGo, { once: true });
+applyLang();
+setInterval(applyLang, 1600);
+
+// ── WebAudio: radio static (muted by default, toggled via SPACE / click) ──
+let audioCtx = null;
+let masterGain = null;
+let tuneInArmed = false;   // has the one-shot static been played yet?
+let soundOn = false;
+
+function ensureAudio() {
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = 0;
+  masterGain.connect(audioCtx.destination);
+}
+
+function playTuneInOnce() {
+  if (tuneInArmed) return;
+  tuneInArmed = true;
+  ensureAudio();
+  const sr = audioCtx.sampleRate;
+  const dur = 3.2;
+  const len = Math.floor(sr * dur);
+  const buf = audioCtx.createBuffer(2, len, sr);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = buf.getChannelData(ch);
+    let b0=0,b1=0,b2=0;
+    for (let i = 0; i < len; i++) {
+      const white = Math.random() * 2 - 1;
+      b0 = 0.99765*b0 + white*0.0990460;
+      b1 = 0.96300*b1 + white*0.2965164;
+      b2 = 0.57000*b2 + white*1.0526913;
+      d[i] = (b0 + b1 + b2 + white * 0.1848) * 0.12;
+    }
+  }
+  const src = audioCtx.createBufferSource();
+  src.buffer = buf;
+  const env = audioCtx.createGain();
+  env.gain.setValueAtTime(0, audioCtx.currentTime);
+  env.gain.linearRampToValueAtTime(0.6, audioCtx.currentTime + 0.15);
+  env.gain.linearRampToValueAtTime(0.1, audioCtx.currentTime + 2.4);
+  env.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 3.0);
+  src.connect(env).connect(masterGain);
+  src.start();
+}
+
+function setSound(on) {
+  soundOn = !!on;
+  document.querySelectorAll('.sc-opt').forEach(el => {
+    el.classList.toggle('active', el.dataset.opt === (soundOn ? 'on' : 'off'));
+  });
+  if (soundOn) {
+    ensureAudio();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    masterGain.gain.cancelScheduledValues(audioCtx.currentTime);
+    masterGain.gain.linearRampToValueAtTime(1, audioCtx.currentTime + 0.08);
+    playTuneInOnce();
+  } else if (audioCtx) {
+    masterGain.gain.cancelScheduledValues(audioCtx.currentTime);
+    masterGain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.08);
+  }
+}
+
+// initial state: muted
+setSound(false);
+
+// spacebar toggles sound
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.key === ' ') {
+    e.preventDefault();
+    setSound(!soundOn);
+  }
+});
+// click on the indicator toggles too
+soundCtrl.addEventListener('click', e => {
+  e.stopPropagation();
+  setSound(!soundOn);
+});
 
 // auto-redirect (meta-refresh is the fallback; do it via JS at ~3.4s for smoother transition)
 setTimeout(() => {
