@@ -608,9 +608,21 @@ soundCtrl.addEventListener('click', e => {
   setSound(!soundOn);
 });
 
+// Sun-state hint for the player's Auto theme — local-hour heuristic, no geolocation.
+// 6am–6:59pm local = day → Industrial Orange, else night → Monochromatic.
+// Player falls back to its own hour check if this hint is missing.
+const _sunHint = (() => {
+  try { const h = new Date().getHours(); return (h >= 6 && h < 19) ? 'day' : 'night'; }
+  catch (_) { return 'day'; }
+})();
+const PLAYER_URL = 'https://twysted.afest.io/radio/?sun=' + _sunHint;
+
+// Keep the manual "enter station" link in sync with the hint too
+try { document.querySelector('.manual a').href = PLAYER_URL; } catch (_) {}
+
 // auto-redirect (meta-refresh is the fallback; do it via JS at ~3.4s for smoother transition)
 setTimeout(() => {
-  window.location.href = 'https://twysted.afest.io/radio/';
+  window.location.href = PLAYER_URL;
 }, 3400);
 </script>
 </body>
