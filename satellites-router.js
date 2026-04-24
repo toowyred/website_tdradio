@@ -100,15 +100,17 @@ export default {
     const host = url.hostname;
 
     // ── Phase 1c test proxy on twysted.afest.io/radio/u* ───────────────
-    // Reverse-proxy to radio.afest.io/u/twysted/* while keeping the
-    // twysted.afest.io address bar. The inner fetch lands on THIS same
-    // Worker (through rule 4 below), which handles the HTML injection.
+    // Reverse-proxy to the core player at radio.afest.io/v2-beta/* with the
+    // same <base> + __SATELLITE_USER injection the /u/(name)/ rule uses.
+    // IMPORTANT: we fetch /v2-beta/* directly (NOT /u/twysted/*) because
+    // Cloudflare Workers don't recursively invoke themselves on
+    // subrequests — so a fetch() to radio.afest.io/u/twysted/ from inside
+    // this Worker would bypass the /u/(name)/ injection rule and land on
+    // GH Pages' non-existent /u/twysted/ folder. Fetching /v2-beta/*
+    // directly is the same content the /u/(name)/ rule would produce;
+    // serveUserScoped() handles the injection locally.
     if (host === 'twysted.afest.io'
         && (path === '/radio/u' || path === '/radio/u/' || path.startsWith('/radio/u/'))) {
-      // Debug ping — quick way to confirm the route is actually bound to
-      // this Worker. If you curl this URL and get the exact string back,
-      // the Worker IS running; if you get a GH Pages 404, the route isn't
-      // pointed at this Worker yet (or hasn't propagated).
       if (path === '/radio/u/_ping') {
         return new Response('satellites-router alive · twysted proxy route OK', {
           status: 200,
@@ -118,22 +120,7 @@ export default {
       const rest = path === '/radio/u' || path === '/radio/u/'
         ? '/'
         : path.slice('/radio/u'.length);
-      const targetUrl = `${CORE_ORIGIN}/u/twysted${rest}${url.search}`;
-      // Build a fresh Request — fetch() on a cross-host URL needs to recreate
-      // the Request so the hostname in the URL wins over the original Host.
-      const targetReq = new Request(targetUrl, {
-        method: request.method,
-        headers: request.headers,
-        body: ['GET', 'HEAD'].includes(request.method) ? undefined : request.body,
-        redirect: 'manual',
-      });
-      const resp = await fetch(targetReq);
-      // Echo a marker header so we can tell the Worker handled this, even
-      // if the inner fetch returns an unexpected response.
-      const headers = new Headers(resp.headers);
-      headers.set('x-worker', 'satellites-router');
-      headers.set('x-proxied-from', targetUrl);
-      return new Response(resp.body, { status: resp.status, statusText: resp.statusText, headers });
+      return serveUserScoped(request, 'twysted', rest);
     }
 
     // 1) Root → splash, pass through unchanged.
@@ -211,12 +198,19 @@ function resolveAlias(handle) {
  */
 async function serveUserScoped(request, name, rest) {
   const url = new URL(request.url);
-  const coreUrl = new URL(
-    CORE_PATH.replace(/\/$/, '') + rest + url.search,
-    url.origin
-  );
-  // Copy the method + body + most headers so CORS / cache hints survive.
-  const coreReq = new Request(coreUrl.toString(), request);
+  // ALWAYS fetch the core player HTML from CORE_ORIGIN, regardless of the
+  // request's incoming origin. This makes twysted.afest.io/radio/u* and
+  // radio.afest.io/u/(name)/ route through the same fetch target (the GH
+  // Pages path /v2-beta/), bypassing the Worker-doesn't-recurse-on-
+  // subrequests limitation that would otherwise force the twysted branch
+  // to land on a non-existent /u/twysted/ folder.
+  const coreUrl = `${CORE_ORIGIN}${CORE_PATH.replace(/\/$/, '')}${rest}${url.search}`;
+  const coreReq = new Request(coreUrl, {
+    method: request.method,
+    headers: request.headers,
+    body: ['GET', 'HEAD'].includes(request.method) ? undefined : request.body,
+    redirect: 'manual',
+  });
   const coreResp = await fetch(coreReq);
   const contentType = coreResp.headers.get('content-type') || '';
   if (!contentType.toLowerCase().includes('text/html')) {
