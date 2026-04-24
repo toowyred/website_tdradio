@@ -1,20 +1,32 @@
 /**
- * afest-satellites-router — the multi-tenant routing Worker for radio.afest.io
+ * afest-satellites-router — multi-tenant routing Worker for radio.afest.io
  * ────────────────────────────────────────────────────────────────────────────
  * Sibling to the existing `afest-assets-gate` Worker on assets.afest.io. This
- * one owns the public-facing radio.afest.io/* surface:
+ * one owns the public-facing radio.afest.io/* surface PLUS the Phase 1c test
+ * proxy at twysted.afest.io/radio/u*.
  *
+ * radio.afest.io/*
  *   /                          → splash HTML on GH Pages (unchanged)
  *   /v2-beta/*                 → pass-through to GH Pages (v2 dev build)
  *   /wsi-rx/*                  → pass-through to GH Pages (future canonical core)
  *   /wsi-rx (bare) + /wsi-rx/  → 302 to twysted.afest.io/radio (no empty station)
  *   /wsi-rx-stable/*           → pass-through (v1.5 rollback parachute)
  *   /u/(name)/*                → edge-rewrite: fetch /v2-beta/<rest>, inject
- *                                 <base href="/v2-beta/"> + a one-liner script
- *                                 setting window.__SATELLITE_USER=(name).
- *                                 Address bar stays at /u/(name)/.
+ *                                 <base href="https://radio.afest.io/v2-beta/">
+ *                                 + a one-liner script setting
+ *                                 window.__SATELLITE_USER=(name). Address bar
+ *                                 stays at /u/(name)/. Base is absolute so the
+ *                                 same injection works when the HTML is
+ *                                 reverse-proxied cross-origin (see below).
  *   /(name) (bare top segment) → 302 → /u/(name)/  (shareable shortcut)
  *   /twysted, /twisted, /twistedduality → 302 → /u/twysted (alias map)
+ *
+ * twysted.afest.io/radio/u*                 [Phase 1c test proxy]
+ *   Reverse-proxies to radio.afest.io/u/twysted/* while preserving the
+ *   twysted.afest.io/radio/u address bar. Proof-of-concept for the eventual
+ *   Phase 1c cut-over where twysted.afest.io/radio/ itself becomes a proxy
+ *   shell over /u/twysted/. Cross-origin subresources work because GH Pages
+ *   serves radio.afest.io with `Access-Control-Allow-Origin: *`.
  *
  * Any reserved path segment (the static folder names listed in RESERVED) is
  * NEVER treated as a DJ handle — it always passes through to the origin.
@@ -23,17 +35,16 @@
  * single CORE_PATH constant below. No other changes required.
  *
  * ─ Deploy ────────────────────────────────────────────────────────────────
- * 1. Cloudflare Dashboard → Workers & Pages → Create Worker.
- * 2. Name: `afest-satellites-router`.
- * 3. Paste this file as the Worker source. Save & Deploy.
- * 4. Add Route: `radio.afest.io/*` → this Worker (Zone: afest.io).
- *    IMPORTANT: add `radio.afest.io/` AND `radio.afest.io/*` as two separate
- *    routes in the CF route table — one-pattern-catches-all matches /* only.
- * 5. Test with curl (see verification block at the bottom of this file).
+ * Cloudflare Dashboard → Workers & Pages → `afest-satellites-router` → paste
+ * this file → Save & Deploy. Required Routes (Zone: afest.io):
+ *   1. radio.afest.io/*            (covers /u/*, /v2-beta/*, etc.)
+ *   2. radio.afest.io/             (bare root — separate pattern in CF)
+ *   3. twysted.afest.io/radio/u    (the Phase 1c test — bare)
+ *   4. twysted.afest.io/radio/u/*  (the Phase 1c test — deeper paths)
+ * Use fail-open on all routes; this Worker is routing-only, no auth.
  *
  * Rollback: delete the route(s) in the CF dashboard. All paths fall back to
- * GH Pages raw serving. Note: `/u/(name)/` URLs stop working after rollback
- * unless the `u/twysted/` shell folder is still in the repo.
+ * GH Pages raw serving. `/u/(name)/` URLs stop working after rollback.
  */
 
 // ── Config ───────────────────────────────────────────────────────────────
@@ -77,11 +88,37 @@ const HANDLE_ALIAS = {
   twistedduality: 'twysted',
 };
 
+// Absolute origin of the canonical core (used for <base> injection so the
+// same-origin AND cross-origin proxy forms both resolve subresources correctly).
+const CORE_ORIGIN = 'https://radio.afest.io';
+
 // ── Entry point ──────────────────────────────────────────────────────────
 export default {
   async fetch(request) {
     const url = new URL(request.url);
     const path = url.pathname;
+    const host = url.hostname;
+
+    // ── Phase 1c test proxy on twysted.afest.io/radio/u* ───────────────
+    // Reverse-proxy to radio.afest.io/u/twysted/* while keeping the
+    // twysted.afest.io address bar. The inner fetch lands on THIS same
+    // Worker (through rule 4 below), which handles the HTML injection.
+    if (host === 'twysted.afest.io'
+        && (path === '/radio/u' || path === '/radio/u/' || path.startsWith('/radio/u/'))) {
+      const rest = path === '/radio/u' || path === '/radio/u/'
+        ? '/'
+        : path.slice('/radio/u'.length);
+      const targetUrl = `${CORE_ORIGIN}/u/twysted${rest}${url.search}`;
+      // Build a fresh Request — fetch() on a cross-host URL needs to recreate
+      // the Request so the hostname in the URL wins over the original Host.
+      const targetReq = new Request(targetUrl, {
+        method: request.method,
+        headers: request.headers,
+        body: ['GET', 'HEAD'].includes(request.method) ? undefined : request.body,
+        redirect: 'manual',
+      });
+      return fetch(targetReq);
+    }
 
     // 1) Root → splash, pass through unchanged.
     if (path === '/' || path === '/index.html') {
@@ -171,10 +208,15 @@ async function serveUserScoped(request, name, rest) {
   }
   // Safe JSON-encoded user name — handles quotes, backslashes, anything.
   const scriptPayload = `window.__SATELLITE_USER = ${JSON.stringify(name)};`;
+  // Absolute base URL so the same injected HTML behaves identically whether
+  // it's served directly on radio.afest.io/u/(name)/ OR reverse-proxied under
+  // twysted.afest.io/radio/u/. Subresource loads go directly to radio.afest.io
+  // regardless of the address-bar origin.
+  const baseHref = `${CORE_ORIGIN}${CORE_PATH}`;
   return new HTMLRewriter()
     .on('head', {
       element(el) {
-        el.prepend(`<base href="${CORE_PATH}">`, { html: true });
+        el.prepend(`<base href="${baseHref}">`, { html: true });
         el.prepend(`<script>${scriptPayload}</script>`, { html: true });
       },
     })
@@ -197,4 +239,11 @@ async function serveUserScoped(request, name, rest) {
  *   curl -sI https://radio.afest.io/djsickmode         # 302  → /u/djsickmode/
  *   curl -sI https://radio.afest.io/u/ghost/           # 200  (player falls
  *                                                      # back to main view)
+ *
+ *   # Phase 1c proxy verification (twysted.afest.io → radio.afest.io):
+ *   curl -sI https://twysted.afest.io/radio/u          # 200  proxy
+ *   curl -sI https://twysted.afest.io/radio/u/         # 200  proxy
+ *   curl -s  https://twysted.afest.io/radio/u/ | grep -o 'window.__SATELLITE_USER = "twysted"'
+ *   curl -s  https://twysted.afest.io/radio/u/ | grep -o '<base href="[^"]*"'
+ *                                                      # → <base href="https://radio.afest.io/v2-beta/"
  * ───────────────────────────────────────────────────────────────────────── */
