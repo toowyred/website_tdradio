@@ -1,0 +1,36 @@
+# ─────────────────────────────────────────────────────────────
+# WSI Radio — CFDED (Cloud-Flare-Dead) emergency fallback signal.dat
+#
+# Purpose: when the Cloudflare R2 origin AND the repo-local mirror are both
+# unreachable (global CF outage, DNS catastrophe, etc.), the Player falls
+# through to this file so visitors still hear SOMETHING instead of a
+# blank screen. A small, hand-curated selection is plenty here — this
+# isn't the library, it's the life-jacket.
+#
+# Conventions:
+#   • Plain field names (signal=, decoder=, etc.). No `offline.*` duplicate
+#     keys — this file IS the offline flavour, so one set of values.
+#   • `File:` lines reference `./cfded/<track>-off.mp3` (committed to GitHub).
+#     No HI-FI variants — cfded is single-file by design; the Player
+#     disables NORMAL + HI-FI buttons automatically on this tier.
+#   • Metadata may be intentionally cryptic (obfuscated titles, redacted
+#     origins) — the "unreleased / preview" framing is the house style
+#     for anything the artist hasn't fully surfaced yet.
+#   • Keep track count small (≤ 5). Ship size matters here — every byte
+#     committed to GitHub Pages bloats the static hosting footprint.
+#
+# Player behaviour on this tier:
+#   • `offline: true` in SOURCES → metadata obfuscation, hi-fi lock,
+#     single-file audio lookup. Plain metaFor() keys still work.
+#   • Block-sharding is NOT used here (cfded is always a monolith).
+# ─────────────────────────────────────────────────────────────
+
+=================================================================
+File: td-audio001-off.mp3
+signal        = ID
+decoder       = TWISTED DUALITY
+status        = unknown
+access        = none
+origin        = Sk?ll?sm x T?rr?r B?ss x Lil Jon
+vibe          = dubstep
+=================================================================
