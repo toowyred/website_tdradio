@@ -105,6 +105,16 @@ export default {
     // Worker (through rule 4 below), which handles the HTML injection.
     if (host === 'twysted.afest.io'
         && (path === '/radio/u' || path === '/radio/u/' || path.startsWith('/radio/u/'))) {
+      // Debug ping — quick way to confirm the route is actually bound to
+      // this Worker. If you curl this URL and get the exact string back,
+      // the Worker IS running; if you get a GH Pages 404, the route isn't
+      // pointed at this Worker yet (or hasn't propagated).
+      if (path === '/radio/u/_ping') {
+        return new Response('satellites-router alive · twysted proxy route OK', {
+          status: 200,
+          headers: { 'content-type': 'text/plain; charset=utf-8', 'x-worker': 'satellites-router' },
+        });
+      }
       const rest = path === '/radio/u' || path === '/radio/u/'
         ? '/'
         : path.slice('/radio/u'.length);
@@ -117,7 +127,13 @@ export default {
         body: ['GET', 'HEAD'].includes(request.method) ? undefined : request.body,
         redirect: 'manual',
       });
-      return fetch(targetReq);
+      const resp = await fetch(targetReq);
+      // Echo a marker header so we can tell the Worker handled this, even
+      // if the inner fetch returns an unexpected response.
+      const headers = new Headers(resp.headers);
+      headers.set('x-worker', 'satellites-router');
+      headers.set('x-proxied-from', targetUrl);
+      return new Response(resp.body, { status: resp.status, statusText: resp.statusText, headers });
     }
 
     // 1) Root → splash, pass through unchanged.
