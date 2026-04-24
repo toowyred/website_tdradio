@@ -20,18 +20,29 @@ Format per the approved plan:
     downbeats_ms  = 124, 2050, 3976, ...
     sections      = section_0:0-12000, section_1:12000-36000, ...
     keys          = 10A@0, 11A@42000
+    drops_ms      = 36000, 72000          # opt-in via --drops (Phase 2d)
+    predrops_ms   = 28000, 64000
+    fake_drops_ms = 20000
 
 Section LABELS (intro / verse / chorus / drop / ...) aren't emitted here
 because allin1 is blocked on this stack (needs torch >=2.5). The Gemma
 judge in milestone 2g will infer labels from energy + section length +
 CLAP similarity patterns. For now sections are anonymous (`section_N`).
 
+Drops / pre-drops / fake-drops (Phase 2d) are computed from the per-track
+bass.wav stem produced by `engine/stems.py`. Pass --drops to opt in. When
+stems are missing, drop fields are omitted silently rather than failing
+hard.
+
 Usage:
   python -m engine.structure --track /path/to/audio.(wav|mp3)
   python -m engine.structure --all
   python -m engine.structure --all --force          # re-analyse every track
-  python -m engine.structure --all --validate       # also cross-check beats
+  python -m engine.structure --all --validate       # cross-check beats
                                                      # against cf-rhythm.dat
+  python -m engine.structure --all --drops          # also detect drops + pre-
+                                                     # drops + fake-drops (needs
+                                                     # stems from Phase 2b)
 """
 
 from __future__ import annotations
@@ -113,6 +124,10 @@ class TrackStructure:
     downbeats_ms: list[int] = field(default_factory=list)
     sections: list[tuple[str, int, int]] = field(default_factory=list)     # (label, start_ms, end_ms)
     keys: list[tuple[str, int]] = field(default_factory=list)              # (camelot, t_ms)
+    # ── 2d — drop markers (optional; emitted only when stems are available)
+    drops_ms: list[int] = field(default_factory=list)       # bass-return downbeat
+    predrops_ms: list[int] = field(default_factory=list)    # build-up start
+    fake_drops_ms: list[int] = field(default_factory=list)  # build-up w/o payoff
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
@@ -242,6 +257,135 @@ def _chroma_sections(audio_path: Path, downbeats_s: list[float], duration_s: flo
     return y, sr, chroma, sections
 
 
+def _stem_dir_for(track_path: Path) -> Path:
+    """Same resolver stems.py uses — so structure.py can find matching
+    stems regardless of whether the user ran stems with --track or --all."""
+    return config.TRACKS_DIR / 'stems' / track_path.stem
+
+
+def _db(rms: float, eps: float = 1e-10) -> float:
+    """RMS → dB (with small-value floor to avoid log(0))."""
+    import math
+    return 20.0 * math.log10(max(rms, eps))
+
+
+def _detect_drops(
+    track_path: Path,
+    downbeats_s: list[float],
+    beats_s: list[float],
+) -> tuple[list[int], list[int], list[int]]:
+    """Find drops + pre-drops + fake-drops using the per-track stem files.
+    Returns three lists of millisecond timestamps. Returns ([], [], []) when
+    stems aren't available for this track (Phase 2d is opt-in — don't fail
+    hard when stems are missing).
+
+    Algorithm (simple, deterministic — Gemma judge can refine later):
+      1. bass.wav RMS envelope at 100 ms hop.
+      2. For each downbeat: compare mean bass-dB in the bar-after window
+         vs the bar-before window. Threshold +6 dB jump = drop candidate.
+      3. For each confirmed drop D: walk back 16 bars, mark the earliest
+         downbeat where bass-dB < (D's post-bar dB - 12 dB) as pre-drop.
+      4. Fake-drop = pre-drop signature followed by a downbeat where the
+         bass return DOESN'T happen (delta < 3 dB). Conservative — most
+         detector false positives live here.
+    """
+    stem_dir = _stem_dir_for(track_path)
+    bass_path = stem_dir / 'bass.wav'
+    if not bass_path.is_file():
+        return [], [], []
+
+    import numpy as np
+    import librosa
+
+    y, sr = librosa.load(str(bass_path), sr=None)
+    # RMS at ~100 ms hop (4410 samples @ 44.1 kHz). Smooths per-beat detail
+    # but catches bar-scale energy shifts.
+    hop = max(1, sr // 10)
+    frame = hop * 2
+    rms = librosa.feature.rms(y=y, frame_length=frame, hop_length=hop)[0]
+    t_rms = np.arange(len(rms)) * (hop / sr)  # time of each RMS sample, seconds
+    rms_db = np.array([_db(r) for r in rms])
+
+    def _window_db(t_a: float, t_b: float) -> float:
+        """Mean bass-dB in [t_a, t_b]. Falls back to the edge frame when
+        window is sub-frame-sized at the file boundary."""
+        if t_b <= t_a:
+            return -80.0
+        a = int(np.searchsorted(t_rms, t_a, side='left'))
+        b = int(np.searchsorted(t_rms, t_b, side='right'))
+        if b <= a:
+            return float(rms_db[min(a, len(rms_db) - 1)])
+        return float(np.mean(rms_db[a:b]))
+
+    if len(downbeats_s) < 4:
+        return [], [], []
+
+    # Estimate bar length — mean of consecutive downbeat intervals.
+    bar_s = float(np.mean(np.diff(downbeats_s)))
+
+    drops_s: list[float] = []
+    drop_post_db: dict[float, float] = {}
+    for d in downbeats_s:
+        before_a = max(0.0, d - bar_s)
+        after_b = min(len(y) / sr, d + bar_s)
+        db_before = _window_db(before_a, d)
+        db_after = _window_db(d, after_b)
+        if db_after - db_before > 6.0:
+            drops_s.append(d)
+            drop_post_db[d] = db_after
+
+    # Pre-drops: walk back 16 bars from each drop. Find the earliest downbeat
+    # whose bar-window bass is at least 12 dB below the drop's post-window.
+    predrops_s: list[float] = []
+    for d in drops_s:
+        target_db = drop_post_db[d] - 12.0
+        window_start = max(0.0, d - 16.0 * bar_s)
+        pre: float | None = None
+        for db_candidate in downbeats_s:
+            if db_candidate < window_start or db_candidate >= d:
+                continue
+            bass_here = _window_db(db_candidate, db_candidate + bar_s)
+            if bass_here < target_db:
+                pre = db_candidate
+                break  # earliest match wins
+        if pre is not None and pre not in predrops_s:
+            predrops_s.append(pre)
+
+    # Fake-drops: look for the pre-drop signature (any 4-16 bars of sparse
+    # bass) where the CONCLUDING downbeat does NOT show a bass return. A
+    # pre-drop without a subsequent drop ⇒ fake-drop at the expected hit.
+    fake_drops_s: list[float] = []
+    sparse_target = -50.0  # fallback target_db when no nearby drop exists
+    for i, d in enumerate(downbeats_s[:-1]):
+        # Skip downbeats already in drops_s (they succeeded, not fakes)
+        if d in drops_s:
+            continue
+        # Look backward for sparse bass (4-16 bars)
+        window_start = max(0.0, d - 16.0 * bar_s)
+        sparse_run = 0
+        for db_candidate in reversed(downbeats_s[:i]):
+            if db_candidate < window_start:
+                break
+            if _window_db(db_candidate, db_candidate + bar_s) < sparse_target:
+                sparse_run += 1
+            else:
+                break
+        if sparse_run >= 4:
+            # We had 4+ bars of sparse bass — but this downbeat doesn't have
+            # a drop. If the NEXT downbeat doesn't either, it's a fake.
+            next_db = downbeats_s[i + 1] if i + 1 < len(downbeats_s) else None
+            if next_db is not None and next_db not in drops_s:
+                # Don't double-flag within 4 bars — consolidate nearby fakes.
+                if not fake_drops_s or (d - fake_drops_s[-1]) > 4 * bar_s:
+                    fake_drops_s.append(d)
+
+    return (
+        sorted(int(s * 1000) for s in drops_s),
+        sorted(int(s * 1000) for s in predrops_s),
+        sorted(int(s * 1000) for s in fake_drops_s),
+    )
+
+
 def _sectional_keys(y, sr, chroma, sections: list[tuple[str, float, float]]) -> list[tuple[str, float]]:
     """Per-section chroma mean → K-K → Camelot. Also computes a single
     "base" key at t=0 which is the whole-track key for comparison."""
@@ -267,7 +411,7 @@ def _sectional_keys(y, sr, chroma, sections: list[tuple[str, float, float]]) -> 
 
 # ── Per-track orchestrator ─────────────────────────────────────────────────
 
-def analyse_track(audio_path: Path) -> TrackStructure:
+def analyse_track(audio_path: Path, with_drops: bool = False) -> TrackStructure:
     import librosa
     # Duration — grabbed cheaply from librosa without reloading.
     duration_s = float(librosa.get_duration(path=str(audio_path)))
@@ -290,9 +434,20 @@ def analyse_track(audio_path: Path) -> TrackStructure:
     del y, chroma
     gc.collect()
 
+    drops_ms: list[int] = []
+    predrops_ms: list[int] = []
+    fake_drops_ms: list[int] = []
+    t_drops = 0.0
+    if with_drops:
+        t = time.perf_counter()
+        drops_ms, predrops_ms, fake_drops_ms = _detect_drops(audio_path, downbeats_s, beats_s)
+        t_drops = time.perf_counter() - t
+
     print(f'    beats    {len(beats_s):4d}  downbeats {len(downbeats_s):3d}   {t_beats:6.1f}s')
     print(f'    sections {len(sections):4d}  target-k  {int(round(duration_s/60*SECTIONS_PER_MIN)):3d}   {t_sections:6.1f}s')
     print(f'    keys     {len(keys):4d}  (deduped from {len(sections)})   {t_keys:6.1f}s')
+    if with_drops:
+        print(f'    drops    {len(drops_ms):4d}  predrops  {len(predrops_ms):3d}  fakes {len(fake_drops_ms):3d}   {t_drops:6.1f}s')
 
     return TrackStructure(
         track_id=audio_path.stem,
@@ -302,6 +457,9 @@ def analyse_track(audio_path: Path) -> TrackStructure:
         downbeats_ms=[int(d * 1000) for d in downbeats_s],
         sections=[(lbl, int(a * 1000), int(b * 1000)) for lbl, a, b in sections],
         keys=[(cam, int(t_sec * 1000)) for cam, t_sec in keys],
+        drops_ms=drops_ms,
+        predrops_ms=predrops_ms,
+        fake_drops_ms=fake_drops_ms,
     )
 
 
@@ -323,6 +481,14 @@ def render_block(s: TrackStructure) -> str:
         'keys          = '
         + ', '.join(f'{cam}@{t}' for cam, t in s.keys)
     )
+    # Drop markers — only emit when we actually detected some. Absence of
+    # these lines means Phase 2d hasn't been run for this track yet.
+    if s.drops_ms:
+        lines.append('drops_ms      = ' + ', '.join(str(v) for v in s.drops_ms))
+    if s.predrops_ms:
+        lines.append('predrops_ms   = ' + ', '.join(str(v) for v in s.predrops_ms))
+    if s.fake_drops_ms:
+        lines.append('fake_drops_ms = ' + ', '.join(str(v) for v in s.fake_drops_ms))
     return '\n'.join(lines)
 
 
@@ -449,6 +615,7 @@ def main() -> int:
     p.add_argument('--all', action='store_true', help='Analyse every track under V1_TRACKS_DIR.')
     p.add_argument('--force', action='store_true', help='Re-analyse even if track is in cf-structure.dat.')
     p.add_argument('--validate', action='store_true', help='Cross-check beat timings against v1.5 cf-rhythm.dat.')
+    p.add_argument('--drops', action='store_true', help='Also detect drops + pre-drops + fake-drops from per-track stems (requires 2b stems to have been generated).')
     p.add_argument('--out', type=Path, default=config.TRACKS_DIR / 'cf-structure.dat', help='Output path.')
     args = p.parse_args()
 
@@ -481,7 +648,7 @@ def main() -> int:
             continue
         try:
             print(f'  --    {track_id}')
-            s = analyse_track(track)
+            s = analyse_track(track, with_drops=args.drops)
             blocks[s.track_id] = render_block(s)
             # Write after every track so a crash mid-batch doesn't lose work.
             write_structure_file(args.out, blocks)
