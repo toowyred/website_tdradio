@@ -1,0 +1,20 @@
+# Engine outputs — regenerated per-run, never tracked in git.
+# Stem files are multi-GB and leak source filenames (which will include
+# opaque trk-* IDs in future but still bloat the repo).
+/tracks/stems/
+
+# Binary embedding caches — large, rebuildable from audio + scripts.
+/tracks/cf-embeddings.npz
+/tracks/cf-embeddings.dat
+
+# Human verdict log — per-session, not worth version-controlling.
+/tracks/cf-dj-feedback.dat
+
+# Per-track dj.dat mix blueprints are uploaded to R2; local copies are scratch.
+/tracks/r/
+
+# Any local stash of source audio — R2 is the authoritative store.
+/tracks/*.wav
+/tracks/*.mp3
+/tracks/*.flac
+/tracks/*.m4a
