@@ -1,0 +1,22 @@
+# Python bytecode + caches — local only
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtualenvs (if anyone makes one; we target system Python 3.12)
+venv/
+.venv/
+env/
+
+# Library-cached model weights — multi-hundred MB each, never in git
+.cache/
+~cache/
+
+# Engine outputs (generated per-run; track IDs may leak in filenames)
+/tracks/stems/
+/tracks/cf-embeddings.npz
+/tracks/cf-dj-feedback.dat
