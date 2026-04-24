@@ -1,0 +1,90 @@
+# ─────────────────────────────────────────────────────────────
+# Unlock codes for the radio player.
+# Format per line:  code=target [; t>YYYYMMDD,HHMM] [; t<YYYYMMDD,HHMM]
+#
+# Supported target values:
+#   track:<trackId>    — load that track (e.g. track:td-audio003)
+#   debugMode          — open the debug panel
+#   lang:<code>        — switch language (de / en / es / fr / ja)
+#   perf:low           — force perf-low tier (A14-class visuals)
+#   perf:lowest        — force perf-lowest tier
+#   perf:high          — force flagship tier (skip auto-demotion)
+#
+# Optional params (chain with ';'):
+#   t>YYYYMMDD,HHMM    — code is ONLY valid AFTER  (UTC / GMT+0)
+#   t<YYYYMMDD,HHMM    — code is ONLY valid BEFORE (UTC / GMT+0)
+#                        Combine both for a window.
+#                        An expired/not-yet-valid code behaves like an unknown code (UI shakes "huh?").
+#   skip(secN)         — after loading the track, seek to second N
+#                        (also accepts plain `skip(N)`). Timeline events in the
+#                        skipped range apply silently; prints are suppressed.
+#   print(text)        — show a print overlay on successful unlock.
+#                        Duration = global printDefault (set in cf-signal.dat; default 5s).
+#                        Only runs if the rest of the code succeeded.
+#                        `;` and `,` are fine inside print() — paren-aware parser.
+#
+# Example chaining:
+#   y1jftmn8b=track:td-audio009; skip(sec80); t>20260420,2355; print(Hi, Aiden!)
+#
+# Multiple codes → same target is fine — just add more lines with different
+# codes pointing at the same target.
+#
+# Players type the CODE (left side). Keep codes gibberish so they're not
+# guessable. Comments start with '#', blank lines ignored.
+#
+# NOTE: this file is fetched on every boot and visible in the Network tab
+# to anyone with devtools. Treat as obscurity, not secrecy.
+# ─────────────────────────────────────────────────────────────
+
+# ── tracks 001–030 (starter pool; edit codes freely) ──
+kz7pq9m2x	=track:td-audio001
+cat1		=track:td-audio001
+h4tnv8b3r	=track:td-audio002
+cat2		=track:td-audio002
+lyoko1b5d	=track:td-audio003
+cat3		=track:td-audio003
+w2fgk6nj8	=track:td-audio004
+cat4		=track:td-audio004
+p5xqr3vzc	=track:td-audio005
+cat5		=track:td-audio005
+m9yd7hwb4	=track:td-audio006
+cat6		=track:td-audio006
+s8lnqv2tp	=track:td-audio007
+cat7		=track:td-audio007
+r6hcw3zxk	=track:td-audio008
+cat8		=track:td-audio008
+yycfttylr	=track:td-audio009; print(What's up Tyler!)
+yycftmide0	=track:td-audio009; print(What's up Aidan!)
+cat9		=track:td-audio009
+v4qdpgh9r	=track:td-audio010
+cat10		=track:td-audio010
+k3xnwvt7m	=track:td-audio011
+cat11		=track:td-audio011
+yycfttylr2	=track:td-audio011; print(Oh hi again Tyler!)
+yycftmide2	=track:td-audio011; print(Oh hi, Aidan!)
+joshsearching	=track:td-audio012; print(What's up, Josh!)
+cat12		=track:td-audio012
+cat13		=track:td-audio013
+c2wtpnvrx=track:td-audio014
+x8vmnqfhb=track:td-audio015
+d5ktrybwc=track:td-audio016
+g1npxvj3r=track:td-audio017
+n4wbqdhfm=track:td-audio018
+t7crkzpgj=track:td-audio019
+j2lhxvmn8=track:td-audio020
+q6dfygkcp=track:td-audio021
+z3rmnbwvh=track:td-audio022
+a9qjfpxtc=track:td-audio023
+e8wgnkvbr=track:td-audio024
+u5htdmnqp=track:td-audio025
+o1xbrvjgf=track:td-audio026
+i4pchwnkm=track:td-audio027
+k9trvqybn=track:td-audio028
+h2mxdgpfc=track:td-audio029
+w6jqvrhnt=track:td-audio030
+
+# ── special-purpose codes ──
+lyoko0777		=debugMode
+kamisa0777		=godmode=playbackControls
+
+debug2			=debugV2Mode

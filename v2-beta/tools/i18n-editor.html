@@ -1,0 +1,1365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>i18n Editor · WSI Radio</title>
+<!-- ──────────────────────────────────────────────────────────────────
+  i18n Editor — side-by-side translation compiler/editor for the
+  radio's I18N dict. Standalone HTML, no build, no deps. Usage:
+
+    1. Open this file in a browser (Chromium for filesystem save).
+    2. [ Load HTML ] → pick radio/index.html — parses the I18N block
+       + scans every  data-i18n="KEY"  to infer which section each
+       string belongs to (so groups reflect real DOM context).
+    3. Pick up to 4 language columns. Edit inline. Per-cell font
+       picker for readability (JP keys can render in Yu Mincho while
+       EN keys stay in WDXL Lubrifont, etc.).
+    4. [ Save ] overwrites index.html (File System Access API) or
+       downloads a new copy when that API isn't available.
+
+  Font state + last-used columns persist in localStorage so restart
+  lands back in your spot.
+────────────────────────────────────────────────────────────────── -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=WDXL+Lubrifont+JP+N&family=Unica+One&family=Noto+Serif+JP:wght@400;700&family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0f0f12;
+    --panel: #17171b;
+    --panel-soft: #1d1d22;
+    --border: #2a2a31;
+    --fg: #e6e6e9;
+    --muted: #888891;
+    --dim: #5a5a62;
+    --accent: #de7029;
+    --accent-dim: #7a3e17;
+    --good: #4caf50;
+    --crit: #e04040;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg); color: var(--fg);
+    font-family: 'WDXL Lubrifont JP N', 'WDXL Lubrifont', 'Helvetica Neue', Arial, sans-serif;
+    font-size: 13px;
+    min-height: 100vh;
+  }
+
+  /* ── Top toolbar ─────────────────────────────────────────────── */
+  .toolbar {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 16px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    box-shadow: 0 2px 10px rgba(0,0,0,0.4);
+  }
+  .toolbar h1 {
+    margin: 0; font-size: 14px; letter-spacing: 3px; text-transform: uppercase;
+    color: var(--accent); flex: 0 0 auto;
+  }
+  .toolbar .spacer { flex: 1; }
+  .btn {
+    background: var(--accent); color: #000; border: none;
+    padding: 6px 14px; font: inherit; font-weight: bold;
+    letter-spacing: 1.5px; text-transform: uppercase; cursor: pointer;
+    transition: filter 0.15s;
+  }
+  .btn:hover:not(:disabled) { filter: brightness(1.15); }
+  .btn:disabled { opacity: 0.45; cursor: default; }
+  .btn--ghost {
+    background: transparent; color: var(--accent);
+    border: 1px solid var(--accent-dim);
+  }
+  .btn--ghost:hover:not(:disabled) { background: rgba(222,112,41,0.12); filter: none; }
+  .file-label { color: var(--muted); font-size: 11px; letter-spacing: 1px; }
+  .file-label strong { color: var(--fg); font-weight: normal; }
+  .status {
+    font-size: 11px; letter-spacing: 1px; padding: 3px 8px;
+    background: rgba(255,255,255,0.04);
+    border-left: 2px solid var(--accent-dim);
+    color: var(--muted);
+  }
+  .status.ok    { border-color: var(--good); color: var(--good); }
+  .status.err   { border-color: var(--crit); color: var(--crit); }
+  .status.warn  { border-color: #e0a040; color: #e0a040; }
+
+  /* ── Column picker row ──────────────────────────────────────── */
+  .col-picker {
+    padding: 10px 16px;
+    background: var(--panel-soft);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  }
+  .col-picker label { color: var(--muted); font-size: 11px; letter-spacing: 1px; }
+  .lang-select {
+    background: var(--bg); color: var(--fg); border: 1px solid var(--border);
+    padding: 4px 8px; font: inherit; font-size: 12px; cursor: pointer;
+  }
+  .lang-select:focus { outline: 1px solid var(--accent); }
+  .col-slot { display: flex; align-items: center; gap: 4px; }
+  .col-slot .remove { color: var(--dim); cursor: pointer; font-size: 14px; padding: 0 4px; }
+  .col-slot .remove:hover { color: var(--crit); }
+
+  /* ── Groups ─────────────────────────────────────────────────── */
+  .groups { padding: 0 16px 80px; }
+  .group {
+    margin-top: 18px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+  }
+  .group-head {
+    padding: 10px 14px;
+    display: flex; align-items: center; gap: 10px; cursor: pointer;
+    user-select: none;
+    background: var(--panel-soft);
+    border-bottom: 1px solid var(--border);
+  }
+  .group-head .chevron {
+    font-family: monospace; color: var(--accent); width: 14px; text-align: center;
+    transition: transform 0.15s;
+  }
+  .group.collapsed .chevron { transform: rotate(-90deg); }
+  .group-head .name {
+    flex: 1;
+    font-size: 12px; letter-spacing: 2.5px; text-transform: uppercase;
+    color: var(--fg); font-weight: bold;
+  }
+  .group-head .count { color: var(--muted); font-size: 11px; }
+  .group-body { display: block; }
+  .group.collapsed .group-body { display: none; }
+
+  /* ── Row layout: [Key] [col1] [col2] ... [lock] [del] ──────── */
+  .row {
+    display: grid;
+    grid-template-columns: 160px repeat(var(--col-count, 2), minmax(0, 1fr)) 26px 28px;
+    gap: 1px;
+    background: var(--border);
+  }
+  .row > * { background: var(--panel); padding: 6px 8px; }
+  .row.header {
+    background: var(--panel-soft);
+    position: sticky; top: 58px; z-index: 5;
+    font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
+    color: var(--muted);
+  }
+  .row.header > * { background: var(--panel-soft); padding: 6px 10px; }
+  .row .key {
+    font-family: 'Courier New', monospace; font-size: 11px;
+    color: var(--accent); word-break: break-all;
+    display: flex; align-items: flex-start;
+    padding-top: 9px;
+  }
+  .row:hover:not(.header) > .key { color: var(--fg); }
+
+  /* Cell: textarea auto-grows, font is per-cell (override via style="") */
+  .cell {
+    position: relative;
+    display: flex; align-items: stretch;
+  }
+  .cell textarea {
+    flex: 1;
+    background: transparent; color: var(--fg);
+    border: 1px solid transparent;
+    padding: 4px 28px 4px 6px;
+    font: inherit; font-size: 14px; line-height: 1.4;
+    resize: none; overflow: hidden; min-height: 28px;
+    width: 100%;
+  }
+  .cell textarea:focus {
+    outline: none; border-color: var(--accent-dim);
+    background: rgba(222,112,41,0.06);
+  }
+  .cell textarea:hover { background: rgba(255,255,255,0.025); }
+  .cell .font-btn {
+    position: absolute;
+    top: 6px; right: 6px;
+    width: 20px; height: 20px;
+    background: transparent; border: 1px solid var(--dim);
+    color: var(--muted); cursor: pointer;
+    font-size: 10px; font-family: serif;
+    display: none;
+    padding: 0; line-height: 18px; text-align: center;
+  }
+  .cell:hover .font-btn, .cell .font-btn.active { display: block; }
+  .cell .font-btn:hover { color: var(--accent); border-color: var(--accent); }
+  .cell.empty textarea { color: var(--dim); font-style: italic; }
+
+  .row .delete {
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; color: var(--dim); font-family: monospace; font-size: 14px;
+  }
+  .row .delete:hover { color: var(--crit); background: rgba(224,64,64,0.08); }
+
+  /* Add-row at bottom of each group */
+  .add-row {
+    display: grid;
+    grid-template-columns: 160px 1fr 36px;
+    gap: 1px;
+    background: var(--border);
+  }
+  .add-row > * { background: var(--panel); padding: 6px 8px; }
+  .add-row input {
+    background: transparent; color: var(--fg);
+    border: 1px solid transparent;
+    padding: 4px 6px; font: inherit; font-size: 12px;
+    width: 100%;
+  }
+  .add-row input:focus { outline: none; border-color: var(--accent-dim); background: rgba(222,112,41,0.06); }
+  .add-row .key-input {
+    font-family: 'Courier New', monospace; font-size: 11px; color: var(--accent);
+  }
+  .add-row button {
+    background: var(--accent-dim); color: var(--fg); border: none;
+    padding: 2px 8px; font: inherit; font-size: 10px; letter-spacing: 1px;
+    cursor: pointer; text-transform: uppercase;
+  }
+  .add-row button:hover { background: var(--accent); color: #000; }
+
+  /* Empty state */
+  .empty-state {
+    padding: 60px 20px; text-align: center; color: var(--muted);
+    font-size: 14px; line-height: 1.6;
+  }
+  .empty-state h2 { color: var(--fg); margin: 0 0 10px; font-size: 18px; letter-spacing: 2px; }
+  .empty-state code { background: var(--panel-soft); padding: 2px 6px; color: var(--accent); }
+
+  /* Add-column / add-language popover */
+  .addcol-menu {
+    position: absolute; z-index: 100;
+    background: var(--panel); border: 1px solid var(--accent-dim);
+    padding: 8px 0; min-width: 260px;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.6);
+  }
+  .addcol-menu .section-label {
+    padding: 4px 14px 2px; font-size: 9px; letter-spacing: 2px; color: var(--dim);
+    text-transform: uppercase;
+  }
+  .addcol-menu .lang-btn {
+    display: inline-block; margin: 4px 6px 4px 14px;
+    padding: 4px 10px; background: var(--accent-dim); color: var(--fg);
+    border: none; font: inherit; font-size: 12px; letter-spacing: 1px;
+    cursor: pointer; text-transform: uppercase;
+  }
+  .addcol-menu .lang-btn:hover { background: var(--accent); color: #000; }
+  .addcol-menu .lang-btn:disabled {
+    background: transparent; color: var(--dim); cursor: default;
+    border: 1px solid var(--border);
+  }
+  .addcol-menu .addnew {
+    padding: 8px 14px; display: flex; gap: 6px; align-items: center;
+    border-top: 1px solid var(--border); margin-top: 4px;
+  }
+  .addcol-menu .addnew input {
+    flex: 1; background: var(--bg); color: var(--fg);
+    border: 1px solid var(--border); padding: 4px 8px;
+    font: inherit; font-size: 12px; letter-spacing: 1px;
+  }
+  .addcol-menu .addnew input:focus { outline: none; border-color: var(--accent); }
+  .addcol-menu .addnew button {
+    background: var(--accent); color: #000; border: none;
+    padding: 4px 12px; font: inherit; font-weight: bold;
+    letter-spacing: 1px; cursor: pointer;
+  }
+  .addcol-menu .addnew button:hover { filter: brightness(1.15); }
+
+  /* Filter bar + coverage */
+  .filter-bar {
+    padding: 6px 16px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    font-size: 11px;
+  }
+  .filter-bar label { color: var(--muted); letter-spacing: 1px; }
+  .filter-bar .fbtn {
+    background: transparent; color: var(--muted);
+    border: 1px solid var(--border);
+    padding: 3px 10px; font: inherit; font-size: 11px;
+    letter-spacing: 1px; cursor: pointer; text-transform: uppercase;
+  }
+  .filter-bar .fbtn:hover { color: var(--fg); border-color: var(--accent-dim); }
+  .filter-bar .fbtn.active {
+    background: var(--accent-dim); color: var(--fg); border-color: var(--accent);
+  }
+  .filter-bar .coverage {
+    margin-left: auto; color: var(--dim); font-family: 'Courier New', monospace;
+    letter-spacing: 1px;
+  }
+  .filter-bar .coverage .cov-lang { color: var(--muted); margin-right: 10px; }
+  .filter-bar .coverage .cov-lang.full { color: var(--good); }
+  .filter-bar .coverage .cov-lang.low  { color: var(--crit); }
+
+  /* Row visual states — empty cell flag + locked row muted */
+  .row.locked { opacity: 0.55; }
+  .row.locked .key::after {
+    content: '🔒'; font-size: 9px; margin-left: 6px; opacity: 0.7;
+  }
+  .row.hidden { display: none; }
+  .cell.empty textarea {
+    background: rgba(224,64,64,0.05);
+    border-bottom: 1px solid rgba(224,64,64,0.35);
+  }
+  .cell.empty textarea:focus { background: rgba(224,64,64,0.08); }
+
+  /* Row gets a lock toggle in a slim column */
+  .row .lock-btn {
+    background: transparent; border: 1px solid transparent;
+    color: var(--dim); cursor: pointer;
+    font-size: 11px; padding: 0 4px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .row .lock-btn:hover { color: var(--accent); }
+  .row .lock-btn.on { color: var(--accent); }
+
+  /* Font menu popover */
+  .font-menu {
+    position: absolute; z-index: 100;
+    background: var(--panel); border: 1px solid var(--accent-dim);
+    padding: 4px 0; min-width: 220px;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.6);
+  }
+  .font-menu .opt {
+    display: block; width: 100%;
+    padding: 6px 14px; background: transparent; color: var(--fg);
+    border: none; text-align: left; cursor: pointer;
+    font-size: 13px;
+  }
+  .font-menu .opt:hover { background: rgba(222,112,41,0.15); }
+  .font-menu .opt.on { color: var(--accent); }
+  .font-menu .sep {
+    height: 1px; background: var(--border); margin: 4px 8px;
+  }
+  .font-menu .group-label {
+    padding: 4px 14px; font-size: 9px; letter-spacing: 2px;
+    color: var(--dim); text-transform: uppercase;
+  }
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <h1>i18n EDITOR</h1>
+  <button class="btn" id="btnLoad">Load HTML</button>
+  <button class="btn btn--ghost" id="btnSave" disabled>Save</button>
+  <span class="file-label" id="fileLabel">No file loaded</span>
+  <span class="spacer"></span>
+  <span class="status" id="status">Idle</span>
+</div>
+
+<div class="col-picker" id="colPicker" style="display:none">
+  <label>Columns:</label>
+  <!-- slots injected by JS -->
+  <button class="btn btn--ghost" id="btnAddCol" style="font-size:11px; padding:4px 10px;">+ Add Column</button>
+</div>
+<div class="filter-bar" id="filterBar" style="display:none">
+  <label>Show:</label>
+  <button class="fbtn active" data-filter="all">All</button>
+  <button class="fbtn" data-filter="missing"      title="Unlocked rows with any empty cell among the visible columns">Missing</button>
+  <button class="fbtn" data-filter="partial"      title="Keys translated in some languages but not all (entire dict, not just visible cols)">Partial</button>
+  <button class="fbtn" data-filter="locked"       title="Keys marked intentionally not-translated (stay as-is across langs)">Locked</button>
+  <span class="coverage" id="coverage"></span>
+</div>
+
+<div class="groups" id="groups">
+  <div class="empty-state">
+    <h2>Ready to edit</h2>
+    <p>Click <code>Load HTML</code> above and pick your <code>radio/index.html</code>.<br>
+    The I18N dictionary + every <code>data-i18n="…"</code> reference will be parsed so strings group by the section they appear in.</p>
+    <p style="font-size:11px;margin-top:30px;color:var(--dim)">
+      Save writes back via File System Access API (Chromium) or downloads a copy (other browsers).
+    </p>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ══════════════════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════════════════
+const State = {
+  // Raw text of the loaded HTML file (verbatim — only the I18N block gets
+  // rewritten on save, everything else passes through untouched).
+  rawHtml: null,
+  fileHandle: null,          // File System Access API handle when available
+  fileName: null,
+
+  // Parsed I18N data model. Shape: { en: { key: 'value', ... }, de: {...}, ... }.
+  i18n: null,
+  // Ordered key list + language list derived from the original file. Keeping
+  // the order so re-serialized output diffs minimally against the input.
+  keyOrder: [],
+  langs: [],
+
+  // Key → group name (string). Groups inferred from where the key appears
+  // in the HTML (data-i18n ancestor heuristic) + fallback buckets.
+  groupOf: {},
+  groupOrder: [],            // insertion order of groups
+
+  // Column selection (which langs are visible). Array of lang codes.
+  // Loaded from localStorage on init, capped to 4.
+  columns: null,
+
+  // Per-cell font override: { "key||lang": "font-family css" }
+  fontOverrides: JSON.parse(localStorage.getItem('i18n-editor-fonts') || '{}'),
+
+  // Per-key lock — authors mark a key "locked" to declare it intentionally
+  // same-across-langs (brand names, universal tokens). Locked keys are
+  // excluded from the Missing filter + Coverage stats.
+  locks: new Set(JSON.parse(localStorage.getItem('i18n-editor-locks') || '[]')),
+
+  // Filter mode: 'all' | 'missing' | 'partial' | 'locked'.
+  filter: 'all',
+
+  // Mark dirty on any edit so Save button reflects state.
+  dirty: false,
+};
+
+function persistLocks() {
+  localStorage.setItem('i18n-editor-locks', JSON.stringify([...State.locks]));
+}
+
+// ══════════════════════════════════════════════════════════════════
+// FONT CATALOG
+// ──────────────────────────────────────────────────────────────────
+// Curated list. Label + CSS font-family + hint about which scripts it
+// renders well so the picker stays legible. System fonts come first
+// (no network dependency), then the WDXL + Noto web fonts loaded above.
+// ══════════════════════════════════════════════════════════════════
+const FONTS = [
+  { section: 'DEFAULT (radio site)' },
+  { label: 'WDXL Lubrifont (display)',   css: "'WDXL Lubrifont JP N', 'WDXL Lubrifont', sans-serif" },
+  { label: 'Courier New (readout)',      css: "'Courier New', monospace" },
+  { section: 'JAPANESE' },
+  { label: 'Yu Mincho (serif kanji)',    css: "'Yu Mincho', 'YuMincho', 'Hiragino Mincho ProN', 'Noto Serif JP', serif" },
+  { label: 'Hiragino Sans (kana)',       css: "'Hiragino Sans', 'Yu Gothic', 'Noto Sans JP', sans-serif" },
+  { label: 'Noto Serif JP (web)',        css: "'Noto Serif JP', serif" },
+  { label: 'Noto Sans JP (web)',         css: "'Noto Sans JP', sans-serif" },
+  { section: 'LATIN' },
+  { label: 'Unica One (VN-capable)',     css: "'Unica One', cursive" },
+  { label: 'System serif',               css: "Georgia, 'Times New Roman', serif" },
+  { label: 'System sans',                css: "'Helvetica Neue', Arial, sans-serif" },
+  { label: 'System mono',                css: "'Courier New', 'Lucida Console', monospace" },
+];
+
+// Heuristic default font per language so untagged cells render plausibly
+// without the user having to pick every time.
+function defaultFontFor(lang) {
+  if (lang === 'ja') return "'Noto Serif JP', 'Yu Mincho', 'Hiragino Mincho ProN', serif";
+  return "'WDXL Lubrifont JP N', 'WDXL Lubrifont', sans-serif";
+}
+
+function fontFor(key, lang) {
+  const ov = State.fontOverrides[key + '||' + lang];
+  return ov || defaultFontFor(lang);
+}
+
+function setFontOverride(key, lang, css) {
+  const k = key + '||' + lang;
+  if (!css) delete State.fontOverrides[k];
+  else      State.fontOverrides[k] = css;
+  localStorage.setItem('i18n-editor-fonts', JSON.stringify(State.fontOverrides));
+}
+
+// ══════════════════════════════════════════════════════════════════
+// STATUS
+// ══════════════════════════════════════════════════════════════════
+function setStatus(msg, kind) {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = 'status ' + (kind || '');
+}
+
+// ══════════════════════════════════════════════════════════════════
+// FILE LOAD
+// ══════════════════════════════════════════════════════════════════
+document.getElementById('btnLoad').addEventListener('click', async () => {
+  try {
+    if (window.showOpenFilePicker) {
+      const [handle] = await window.showOpenFilePicker({
+        types: [{ description: 'HTML files', accept: { 'text/html': ['.html', '.htm'] } }],
+      });
+      const file = await handle.getFile();
+      const text = await file.text();
+      State.fileHandle = handle;
+      State.fileName   = file.name;
+      parseAndRender(text);
+    } else {
+      // Fallback for Firefox/Safari — hidden file input.
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.html,.htm';
+      input.addEventListener('change', async () => {
+        const f = input.files[0];
+        if (!f) return;
+        const text = await f.text();
+        State.fileHandle = null;
+        State.fileName   = f.name;
+        parseAndRender(text);
+      });
+      input.click();
+    }
+  } catch (e) {
+    if (e.name !== 'AbortError') setStatus('Load failed: ' + e.message, 'err');
+  }
+});
+
+function parseAndRender(text) {
+  State.rawHtml = text;
+  try {
+    const { i18n, keyOrder, langs } = parseI18N(text);
+    State.i18n = i18n;
+    State.keyOrder = keyOrder;
+    State.langs = langs;
+    State.groupOf = inferGroups(text, keyOrder);
+    // Column picker defaults: remember prior selection, else first two langs.
+    const prior = JSON.parse(localStorage.getItem('i18n-editor-columns') || 'null');
+    const validPrior = prior && prior.every(l => langs.includes(l)) ? prior : null;
+    State.columns = (validPrior || langs.slice(0, Math.min(2, langs.length))).slice(0, 4);
+
+    document.getElementById('btnSave').disabled = false;
+    document.getElementById('fileLabel').innerHTML = 'File: <strong>' + escapeHtml(State.fileName || '(unknown)') + '</strong>';
+    document.getElementById('colPicker').style.display = '';
+    document.getElementById('filterBar').style.display = '';
+    State.dirty = false;
+    setStatus('Loaded: ' + keyOrder.length + ' keys × ' + langs.length + ' langs', 'ok');
+    renderColumnPicker();
+    renderGroups();
+    renderCoverage();
+  } catch (e) {
+    setStatus('Parse failed: ' + e.message, 'err');
+    console.error(e);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// I18N DICT PARSER
+// ──────────────────────────────────────────────────────────────────
+// Find  const I18N = { ... };  in the source and evaluate it in an
+// isolated function scope. Risky-looking but this is a local dev tool
+// running on the user's own file — same trust model as build-blocks.py.
+// We track the raw character range so saving can replace exactly those
+// bytes and leave the surrounding HTML untouched.
+// ══════════════════════════════════════════════════════════════════
+function parseI18N(text) {
+  const startRe = /\bconst\s+I18N\s*=\s*\{/;
+  const m = startRe.exec(text);
+  if (!m) throw new Error('No `const I18N = {...}` found in the file.');
+  const startIdx = m.index;
+  const openIdx  = m.index + m[0].length - 1;   // at the opening `{`
+
+  // Bracket-balanced scan respecting single/double/backtick strings + comments.
+  let depth = 0, i = openIdx;
+  let inStr = null;            // "'", '"', or '`'
+  let inLineC = false, inBlockC = false;
+  for (; i < text.length; i++) {
+    const c = text[i];
+    const prev = text[i - 1];
+    if (inLineC) {
+      if (c === '\n') inLineC = false;
+      continue;
+    }
+    if (inBlockC) {
+      if (c === '*' && text[i + 1] === '/') { inBlockC = false; i++; }
+      continue;
+    }
+    if (inStr) {
+      if (c === '\\') { i++; continue; }        // skip next
+      if (c === inStr) inStr = null;
+      continue;
+    }
+    if (c === '/' && text[i + 1] === '/') { inLineC = true; continue; }
+    if (c === '/' && text[i + 1] === '*') { inBlockC = true; i++; continue; }
+    if (c === "'" || c === '"' || c === '`') { inStr = c; continue; }
+    if (c === '{') depth++;
+    else if (c === '}') {
+      depth--;
+      if (depth === 0) { i++; break; }
+    }
+  }
+  const body = text.slice(openIdx, i);           // includes outer { }
+  // Evaluate — wrapped in parens so it parses as an expression.
+  let parsed;
+  try { parsed = (new Function('return ' + body))(); }
+  catch (e) { throw new Error('I18N JS eval failed: ' + e.message); }
+  if (!parsed || typeof parsed !== 'object') throw new Error('I18N did not evaluate to an object.');
+
+  // Track the  exact character range of the braces so save can splice back in.
+  State._i18nStart = openIdx;
+  State._i18nEnd   = i;                          // one past the closing `}`
+
+  const langs = Object.keys(parsed);
+  if (!langs.length) throw new Error('I18N has no languages.');
+  // Use the first language's keys as the canonical key order — matches the
+  // author's intended section structure (grouping, separators, comments).
+  const keyOrder = [];
+  const seen = new Set();
+  for (const lang of langs) {
+    for (const k of Object.keys(parsed[lang])) {
+      if (!seen.has(k)) { seen.add(k); keyOrder.push(k); }
+    }
+  }
+  return { i18n: parsed, keyOrder, langs };
+}
+
+// ══════════════════════════════════════════════════════════════════
+// GROUP INFERENCE
+// ──────────────────────────────────────────────────────────────────
+// Scan the HTML for data-i18n="KEY" occurrences. Walk upward through
+// the textual HTML looking for the nearest enclosing context marker:
+//   · an element with an id=…  →  use that id as the group
+//   · a nearby HTML comment <!-- XXX --> →  use the comment text
+//   · a <details><summary> heading → summary text
+// Fallback: "Other".
+// Simple regex-based walker — doesn't build a real DOM (which would be
+// overkill + error-prone on a partially-served snippet).
+// ══════════════════════════════════════════════════════════════════
+function inferGroups(htmlText, keyOrder) {
+  const groupOf = {};
+  const groupOrder = [];
+  const seenGroup = new Set();
+
+  // Find every data-i18n="KEY" with its position.
+  const attrRe = /data-i18n\s*=\s*["']([^"']+)["']/g;
+  const hits = {};
+  let m;
+  while ((m = attrRe.exec(htmlText))) {
+    const key = m[1];
+    if (!(key in hits)) hits[key] = m.index;    // first occurrence wins
+  }
+
+  // Only class tokens that look like structural containers qualify as group
+  // labels — individual element ids/classes (btnScan, brandLine2, qbtnNormal,
+  // legend-label, mrbtn) produce one-key groups and make the editor noisy.
+  const CONTAINER_PATTERNS = [
+    /^bar-?menu$/i, /^track-?card$/i, /^tuner$/i, /^brand$/i, /^subtitle/i,
+    /^playback-?info-?overlay$/i, /^camelot-?overlay$/i, /^info-?overlay$/i,
+    /^confirm-?overlay$/i, /^code-?panel$/i, /^debug-?panel$/i,
+    /^loading-?rescue/i, /^streamRate/i, /^readouts$/i,
+  ];
+  function isContainerLabel(label) {
+    for (const tok of String(label).split(/\s+/)) {
+      for (const re of CONTAINER_PATTERNS) if (re.test(tok)) return tok;
+    }
+    return null;
+  }
+
+  function findGroupFor(pos) {
+    // Preferred signals, in priority order:
+    //   1. Nearest HTML comment header (e.g. <!-- brand -->, <!-- playback info modal -->)
+    //   2. Nearest <summary>…</summary> heading
+    //   3. Nearest id/class on a recognized container element
+    // We skip everything else (random element ids/classes produce noisy groups).
+    const slice = htmlText.slice(Math.max(0, pos - 4000), pos);
+    const candidates = [];
+    const commentRe = /<!--\s*([^\n][^]{0,200}?)\s*-->/g;
+    let cm;
+    while ((cm = commentRe.exec(slice))) {
+      const raw = cm[1].trim();
+      if (raw.startsWith('──') || raw.startsWith('==')) continue;    // banner bars
+      if (/^\s*[\/*]/.test(raw)) continue;
+      if (raw.length > 90) continue;
+      candidates.push({ pos: cm.index, rank: 1, label: firstLine(raw) });
+    }
+    const summaryRe = /<summary[^>]*>([^<]+)<\/summary>/g;
+    while ((cm = summaryRe.exec(slice))) {
+      candidates.push({ pos: cm.index, rank: 2, label: cm[1].trim() });
+    }
+    const idRe = /\s(?:id|class)\s*=\s*"([^"]+)"/g;
+    while ((cm = idRe.exec(slice))) {
+      const hit = isContainerLabel(cm[1]);
+      if (hit) candidates.push({ pos: cm.index, rank: 3, label: hit });
+    }
+    if (!candidates.length) return null;
+    // Sort: lower rank wins first (comments > summaries > container ids),
+    // then nearest-to-attribute within the same rank.
+    candidates.sort((a, b) => (a.rank - b.rank) || (b.pos - a.pos));
+    return candidates[0].label;
+  }
+
+  // Classify keys by prefix as a second layer — groups of keys with the
+  // same prefix ("theme-*", "m-*") cluster even if only one of them was
+  // found in the HTML scan.
+  const prefixGroup = {
+    'theme-':    'Themes',
+    'dlg-':      'Access / Streaming dialog',
+    'm-':        'Track card rows',
+    'pulse':     'Settings — Waves',
+    'pulse-':    'Settings — Waves',
+    'pw-':       'Playback-info modal',
+    'camelot':   'Camelot wheel',
+    'camelot-':  'Camelot wheel',
+    'fetch':     'Status banner',
+    'contact':   'Status banner',
+    'rescue':    'Status banner',
+    'offline':   'Status banner',
+    'perf-':     'Status banner',
+    'meta-':     'Status banner',
+    'unit-':     'Tuner readouts',
+    'bpm':       'Tuner readouts',
+    'key':       'Tuner readouts',
+    'db':        'Tuner readouts',
+    'vibe':      'Tuner readouts',
+    'rate':      'Tuner readouts',
+  };
+  function prefixHit(k) {
+    for (const p in prefixGroup) {
+      if (k === p || k.startsWith(p)) return prefixGroup[p];
+    }
+    return null;
+  }
+
+  for (const key of keyOrder) {
+    let g = null;
+    const pos = hits[key];
+    if (pos != null) {
+      g = findGroupFor(pos);
+    }
+    if (!g) g = prefixHit(key);
+    if (!g) g = 'Other';
+    // Normalize some common raw labels into friendlier names.
+    g = friendlyGroupName(g);
+    groupOf[key] = g;
+    if (!seenGroup.has(g)) { seenGroup.add(g); groupOrder.push(g); }
+  }
+  State.groupOrder = groupOrder;
+  return groupOf;
+}
+
+function friendlyGroupName(raw) {
+  const r = String(raw);
+  // Map lowercased id/class/comment fragments to tidier labels. Order is
+  // first-match-wins — more-specific patterns before broad ones.
+  const lower = r.toLowerCase();
+  if (/\btrack-?card\b|card-body|track card|metadata block/.test(lower))           return 'Track card';
+  if (/\bbrand\b/.test(lower))                                                      return 'Brand (bottom-right logo)';
+  if (/\btuning strip|tuner-?strip|\btuner\b|\bstream-?rate\b/.test(lower))         return 'Tuner readouts';
+  if (/\bplayback[\s-]?info\b|pitch.?wobble/.test(lower))                           return 'Playback-info modal';
+  if (/\bcamelot\b|svg injected/.test(lower))                                        return 'Camelot wheel';
+  if (/\bdebug-?panel\b/.test(lower))                                                return 'Debug panel';
+  if (/\binfo-?dialog\b|\binfo overlay|access.?dialog|\baccess\b|streaming/.test(lower)) return 'Access / Streaming dialog';
+  if (/\bconfirm\b/.test(lower))                                                     return 'External-link confirm';
+  if (/\bloading\b|rescue|contact fallback|\bstatus\b/.test(lower))                  return 'Status banner';
+  if (/\bbar-?menu\b|\bsettings\b menu|\blang\b|\btheme\b|\bwaves\b|\bpulse\b|hamburger|back-?arrow|filled by js/.test(lower)) return 'Settings menu';
+  if (/\btransport\b|\bscan\b|\bplay\b/.test(lower))                                  return 'Transport buttons';
+  if (/recalibrate/.test(lower))                                                      return 'Recalibrate button';
+  if (/\bsubtitle\b|\bsrt\b/.test(lower))                                             return 'Subtitles';
+  if (/\bcode-?panel\b|unlock/.test(lower))                                           return 'Code unlock panel';
+  // Length cap so multi-line comments don't make group headers wrap weirdly.
+  return r.length > 56 ? r.slice(0, 54) + '…' : r;
+}
+
+function firstLine(s) {
+  const nl = s.indexOf('\n');
+  return (nl >= 0 ? s.slice(0, nl) : s).trim();
+}
+
+// ══════════════════════════════════════════════════════════════════
+// RENDER: column picker
+// ══════════════════════════════════════════════════════════════════
+function renderColumnPicker() {
+  const host = document.getElementById('colPicker');
+  // Remove old slots (keep the label + add-button)
+  [...host.querySelectorAll('.col-slot')].forEach(n => n.remove());
+  const addBtn = document.getElementById('btnAddCol');
+  State.columns.forEach((lang, idx) => {
+    const slot = document.createElement('div');
+    slot.className = 'col-slot';
+    const sel = document.createElement('select');
+    sel.className = 'lang-select';
+    for (const l of State.langs) {
+      const o = document.createElement('option');
+      o.value = l; o.textContent = l;
+      if (l === lang) o.selected = true;
+      sel.appendChild(o);
+    }
+    sel.addEventListener('change', () => {
+      State.columns[idx] = sel.value;
+      persistCols();
+      renderGroups();
+    });
+    slot.appendChild(sel);
+    if (State.columns.length > 1) {
+      const rm = document.createElement('span');
+      rm.className = 'remove'; rm.textContent = '×'; rm.title = 'Remove column';
+      rm.addEventListener('click', () => {
+        State.columns.splice(idx, 1);
+        persistCols();
+        renderColumnPicker();
+        renderGroups();
+      });
+      slot.appendChild(rm);
+    }
+    host.insertBefore(slot, addBtn);
+  });
+  addBtn.disabled = State.columns.length >= 4;
+}
+document.getElementById('btnAddCol').addEventListener('click', (e) => {
+  if (State.columns.length >= 4) return;
+  e.stopPropagation();
+  openAddColumnMenu(e.currentTarget);
+});
+
+// Pop the Add Column picker. Lists existing langs (greying already-visible
+// ones) + a "new language" input so authors can add (e.g.) 'it' → new
+// column filled with empty strings across every existing key.
+let _addColMenu = null;
+function openAddColumnMenu(anchor) {
+  closeAddColumnMenu();
+  const menu = document.createElement('div');
+  menu.className = 'addcol-menu';
+  menu.innerHTML = '<div class="section-label">Pick an existing language</div>';
+  const listRow = document.createElement('div');
+  listRow.style.padding = '2px 0 6px';
+  for (const l of State.langs) {
+    const b = document.createElement('button');
+    b.className = 'lang-btn';
+    b.textContent = l;
+    const alreadyVisible = State.columns.includes(l);
+    if (alreadyVisible) {
+      b.disabled = true;
+      b.title = 'Already shown';
+    } else {
+      b.addEventListener('click', () => {
+        State.columns.push(l);
+        persistCols();
+        closeAddColumnMenu();
+        renderColumnPicker();
+        renderGroups();
+        renderCoverage();
+      });
+    }
+    listRow.appendChild(b);
+  }
+  menu.appendChild(listRow);
+
+  const addLabel = document.createElement('div');
+  addLabel.className = 'section-label';
+  addLabel.textContent = 'Or add a new language';
+  menu.appendChild(addLabel);
+
+  const addRow = document.createElement('div');
+  addRow.className = 'addnew';
+  const input = document.createElement('input');
+  input.placeholder = 'ISO code — e.g. it, pt, ko';
+  input.maxLength = 8;
+  const addBtn = document.createElement('button');
+  addBtn.textContent = 'Add';
+  const commit = () => {
+    const code = input.value.trim().toLowerCase();
+    if (!code) { input.focus(); return; }
+    if (!/^[a-z]{2,3}(-[a-z]{2})?$/i.test(code)) {
+      input.style.borderColor = 'var(--crit)';
+      setStatus('Invalid language code (expect 2–3 letters, optionally -CC)', 'err');
+      return;
+    }
+    if (State.langs.includes(code)) {
+      // Just switch to showing it.
+      if (!State.columns.includes(code)) State.columns.push(code);
+    } else {
+      // New language: register globally + initialize empty strings so
+      // every existing key has a slot (serializer expects a value per key).
+      State.langs.push(code);
+      State.i18n[code] = {};
+      for (const k of State.keyOrder) State.i18n[code][k] = '';
+      State.columns.push(code);
+      markDirty();
+      setStatus('Added language: ' + code, 'ok');
+    }
+    persistCols();
+    closeAddColumnMenu();
+    renderColumnPicker();
+    renderGroups();
+    renderCoverage();
+  };
+  addBtn.addEventListener('click', commit);
+  input.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') { ev.preventDefault(); commit(); }
+    if (ev.key === 'Escape') closeAddColumnMenu();
+  });
+  addRow.appendChild(input);
+  addRow.appendChild(addBtn);
+  menu.appendChild(addRow);
+
+  document.body.appendChild(menu);
+  const r = anchor.getBoundingClientRect();
+  menu.style.top  = (window.scrollY + r.bottom + 6) + 'px';
+  menu.style.left = (window.scrollX + r.left) + 'px';
+  _addColMenu = menu;
+  setTimeout(() => { input.focus(); }, 0);
+  setTimeout(() => {
+    document.addEventListener('click', onOut, { capture: true });
+  }, 0);
+  function onOut(ev) {
+    if (menu.contains(ev.target) || anchor.contains(ev.target)) return;
+    document.removeEventListener('click', onOut, { capture: true });
+    closeAddColumnMenu();
+  }
+}
+function closeAddColumnMenu() {
+  if (_addColMenu && _addColMenu.parentNode) _addColMenu.parentNode.removeChild(_addColMenu);
+  _addColMenu = null;
+}
+function persistCols() {
+  localStorage.setItem('i18n-editor-columns', JSON.stringify(State.columns));
+}
+
+// ══════════════════════════════════════════════════════════════════
+// RENDER: groups + rows
+// ══════════════════════════════════════════════════════════════════
+function renderGroups() {
+  const host = document.getElementById('groups');
+  host.innerHTML = '';
+  host.style.setProperty('--col-count', State.columns.length);
+  // applyFilter runs at the end; it hides rows that don't match the current
+  // filter mode + collapses empty groups. Called here so initial render
+  // respects whichever filter was active before a re-render.
+
+  // Group keys
+  const bucket = {};
+  for (const key of State.keyOrder) {
+    const g = State.groupOf[key] || 'Other';
+    (bucket[g] = bucket[g] || []).push(key);
+  }
+  // Order of groups comes from the first occurrence in keyOrder
+  const groupSeq = [];
+  const seen = new Set();
+  for (const k of State.keyOrder) {
+    const g = State.groupOf[k] || 'Other';
+    if (!seen.has(g)) { seen.add(g); groupSeq.push(g); }
+  }
+
+  for (const groupName of groupSeq) {
+    const keys = bucket[groupName];
+    const g = document.createElement('div');
+    g.className = 'group';
+    const head = document.createElement('div');
+    head.className = 'group-head';
+    head.innerHTML =
+      '<span class="chevron">▼</span>' +
+      '<span class="name">' + escapeHtml(groupName) + '</span>' +
+      '<span class="count">' + keys.length + ' key' + (keys.length === 1 ? '' : 's') + '</span>';
+    head.addEventListener('click', () => g.classList.toggle('collapsed'));
+    g.appendChild(head);
+
+    const body = document.createElement('div');
+    body.className = 'group-body';
+
+    // Header row (key | col1 | col2 | … | lock | delete)
+    const header = document.createElement('div');
+    header.className = 'row header';
+    header.appendChild(mkSpan('key', 'KEY'));
+    for (const l of State.columns) header.appendChild(mkSpan('', l.toUpperCase()));
+    header.appendChild(mkSpan('', ''));   // lock column spacer
+    header.appendChild(mkSpan('', ''));   // delete column spacer
+    body.appendChild(header);
+
+    for (const key of keys) body.appendChild(mkRow(key));
+
+    // Add-key row at bottom of each group
+    body.appendChild(mkAddRow(groupName));
+    g.appendChild(body);
+    host.appendChild(g);
+  }
+  // Re-apply whatever filter was active so rows appear/disappear consistently.
+  applyFilter();
+}
+
+// ══════════════════════════════════════════════════════════════════
+// FILTER + COVERAGE
+// ══════════════════════════════════════════════════════════════════
+// Wire the filter buttons exactly once. Repeated renderGroups() calls
+// don't re-bind because the buttons live in the static filter bar above.
+(function wireFilterBar() {
+  const bar = document.getElementById('filterBar');
+  if (!bar) return;
+  bar.addEventListener('click', (e) => {
+    const btn = e.target.closest('.fbtn');
+    if (!btn) return;
+    State.filter = btn.dataset.filter || 'all';
+    bar.querySelectorAll('.fbtn').forEach(b => b.classList.toggle('active', b === btn));
+    applyFilter();
+  });
+})();
+
+// Classify a key by translation status across the FULL dict (not just the
+// visible columns — partial status should reflect real coverage).
+function keyStatus(key) {
+  if (State.locks.has(key)) return 'locked';
+  let filled = 0, total = 0;
+  for (const l of State.langs) {
+    total++;
+    const v = State.i18n[l] && State.i18n[l][key];
+    if (v != null && String(v).length > 0) filled++;
+  }
+  if (filled === 0)      return 'empty';
+  if (filled < total)    return 'partial';
+  return 'full';
+}
+
+// Per-row: does any VISIBLE column have an empty value? (Drives "Missing"
+// filter — authors see rows that need work in the columns they're viewing.)
+function keyMissingInVisibleCols(key) {
+  for (const l of State.columns) {
+    const v = State.i18n[l] && State.i18n[l][key];
+    if (!v || String(v).length === 0) return true;
+  }
+  return false;
+}
+
+function applyFilter() {
+  const mode = State.filter || 'all';
+  const rows = document.querySelectorAll('.row[data-key]');
+  rows.forEach(row => {
+    const key = row.dataset.key;
+    let show = true;
+    if (mode === 'missing') {
+      show = !State.locks.has(key) && keyMissingInVisibleCols(key);
+    } else if (mode === 'partial') {
+      show = keyStatus(key) === 'partial';
+    } else if (mode === 'locked') {
+      show = State.locks.has(key);
+    }
+    row.classList.toggle('hidden', !show);
+  });
+  // Collapse groups that have no visible rows so the editor stays tidy.
+  document.querySelectorAll('.group').forEach(g => {
+    const anyVisible = !!g.querySelector('.row[data-key]:not(.hidden)');
+    g.style.display = anyVisible ? '' : 'none';
+  });
+}
+
+function renderCoverage() {
+  const host = document.getElementById('coverage');
+  if (!host) return;
+  const total = State.keyOrder.filter(k => !State.locks.has(k)).length;
+  const parts = State.langs.map(l => {
+    let filled = 0;
+    for (const k of State.keyOrder) {
+      if (State.locks.has(k)) continue;
+      const v = State.i18n[l] && State.i18n[l][k];
+      if (v != null && String(v).length > 0) filled++;
+    }
+    const full = (filled === total);
+    const low  = (total > 0 && filled / total < 0.85);
+    const cls  = full ? 'full' : (low ? 'low' : '');
+    return '<span class="cov-lang ' + cls + '">' + l + ' ' + filled + '/' + total + '</span>';
+  });
+  host.innerHTML = 'Coverage: ' + parts.join('');
+}
+
+function mkSpan(cls, text) {
+  const s = document.createElement('div');
+  if (cls) s.className = cls;
+  s.textContent = text;
+  return s;
+}
+
+function mkRow(key) {
+  const row = document.createElement('div');
+  row.className = 'row';
+  row.dataset.key = key;
+  if (State.locks.has(key)) row.classList.add('locked');
+
+  // Key cell
+  const keyCell = document.createElement('div');
+  keyCell.className = 'key';
+  keyCell.textContent = key;
+  row.appendChild(keyCell);
+
+  // Value cells for each active column
+  for (const lang of State.columns) {
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+    const ta = document.createElement('textarea');
+    const val = (State.i18n[lang] && State.i18n[lang][key] != null) ? String(State.i18n[lang][key]) : '';
+    ta.value = val;
+    if (!val) cell.classList.add('empty');
+    ta.style.fontFamily = fontFor(key, lang);
+    autoSizeTextarea(ta);
+    ta.addEventListener('input', () => {
+      const v = ta.value;
+      if (!State.i18n[lang]) State.i18n[lang] = {};
+      State.i18n[lang][key] = v;
+      cell.classList.toggle('empty', !v);
+      autoSizeTextarea(ta);
+      markDirty();
+      // Live-update the coverage strip + re-apply the active filter so the
+      // row appears/disappears correctly as it becomes fully translated.
+      renderCoverage();
+      if (State.filter !== 'all') applyFilter();
+    });
+    cell.appendChild(ta);
+
+    // Font-override button (shows on hover)
+    const fb = document.createElement('button');
+    fb.className = 'font-btn'; fb.textContent = 'Aa';
+    fb.title = 'Change font for this cell';
+    fb.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openFontMenu(fb, key, lang, (css) => {
+        setFontOverride(key, lang, css);
+        ta.style.fontFamily = fontFor(key, lang);
+      });
+    });
+    cell.appendChild(fb);
+    row.appendChild(cell);
+  }
+
+  // Lock toggle — marks a key as "intentionally same across all langs"
+  // (brand names, universal tokens). Locked rows are excluded from the
+  // Missing filter + Coverage tally.
+  const lockBtn = document.createElement('button');
+  lockBtn.className = 'lock-btn' + (State.locks.has(key) ? ' on' : '');
+  lockBtn.type = 'button';
+  lockBtn.textContent = State.locks.has(key) ? '🔒' : '🔓';
+  lockBtn.title = State.locks.has(key)
+    ? 'Unlock — treat this key like every other translatable string'
+    : 'Lock — mark this key as intentionally not-translated (universal)';
+  lockBtn.addEventListener('click', () => {
+    if (State.locks.has(key)) State.locks.delete(key);
+    else                       State.locks.add(key);
+    persistLocks();
+    lockBtn.classList.toggle('on', State.locks.has(key));
+    row.classList.toggle('locked', State.locks.has(key));
+    lockBtn.textContent = State.locks.has(key) ? '🔒' : '🔓';
+    renderCoverage();
+    if (State.filter !== 'all') applyFilter();
+  });
+  row.appendChild(lockBtn);
+
+  // Delete button
+  const del = document.createElement('div');
+  del.className = 'delete'; del.textContent = '×';
+  del.title = 'Remove this key from every language';
+  del.addEventListener('click', () => {
+    if (!confirm('Remove key "' + key + '" from every language?')) return;
+    for (const l of State.langs) {
+      if (State.i18n[l]) delete State.i18n[l][key];
+    }
+    const i = State.keyOrder.indexOf(key);
+    if (i >= 0) State.keyOrder.splice(i, 1);
+    delete State.groupOf[key];
+    State.locks.delete(key); persistLocks();
+    markDirty();
+    renderGroups();
+    renderCoverage();
+  });
+  row.appendChild(del);
+
+  return row;
+}
+
+function mkAddRow(groupName) {
+  const row = document.createElement('div');
+  row.className = 'add-row';
+  const keyIn = document.createElement('input');
+  keyIn.className = 'key-input';
+  keyIn.placeholder = 'new-key (kebab-case)';
+  const valIn = document.createElement('input');
+  valIn.placeholder = 'English value (other langs inherit empty)';
+  const btn = document.createElement('button');
+  btn.textContent = 'Add';
+  const add = () => {
+    const k = keyIn.value.trim();
+    if (!k) { keyIn.focus(); return; }
+    if (State.keyOrder.includes(k)) { setStatus('Duplicate key: ' + k, 'err'); return; }
+    for (const l of State.langs) {
+      if (!State.i18n[l]) State.i18n[l] = {};
+      State.i18n[l][k] = (l === 'en') ? valIn.value : '';
+    }
+    State.keyOrder.push(k);
+    State.groupOf[k] = groupName;
+    keyIn.value = ''; valIn.value = '';
+    markDirty();
+    renderGroups();
+  };
+  btn.addEventListener('click', add);
+  keyIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') add(); });
+  valIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') add(); });
+  row.appendChild(keyIn);
+  row.appendChild(valIn);
+  row.appendChild(btn);
+  return row;
+}
+
+function autoSizeTextarea(ta) {
+  ta.style.height = 'auto';
+  ta.style.height = Math.max(28, Math.min(260, ta.scrollHeight)) + 'px';
+}
+
+// ══════════════════════════════════════════════════════════════════
+// FONT MENU
+// ══════════════════════════════════════════════════════════════════
+let _activeMenu = null;
+function openFontMenu(anchor, key, lang, onPick) {
+  closeFontMenu();
+  const menu = document.createElement('div');
+  menu.className = 'font-menu';
+  const current = fontFor(key, lang);
+
+  for (const f of FONTS) {
+    if (f.section) {
+      const lbl = document.createElement('div');
+      lbl.className = 'group-label'; lbl.textContent = f.section;
+      menu.appendChild(lbl);
+      continue;
+    }
+    const opt = document.createElement('button');
+    opt.className = 'opt' + (f.css === current ? ' on' : '');
+    opt.style.fontFamily = f.css;
+    opt.textContent = f.label;
+    opt.addEventListener('click', () => {
+      onPick(f.css);
+      closeFontMenu();
+    });
+    menu.appendChild(opt);
+  }
+  // Reset option
+  const sep = document.createElement('div'); sep.className = 'sep'; menu.appendChild(sep);
+  const reset = document.createElement('button');
+  reset.className = 'opt';
+  reset.style.color = 'var(--muted)';
+  reset.textContent = '↺ Reset to default (' + lang + ')';
+  reset.addEventListener('click', () => { onPick(null); closeFontMenu(); });
+  menu.appendChild(reset);
+
+  document.body.appendChild(menu);
+  const r = anchor.getBoundingClientRect();
+  // Prefer placing below; flip above if not enough room.
+  const mh = 360;
+  const above = (r.bottom + mh + 10) > window.innerHeight;
+  menu.style.top  = (window.scrollY + (above ? r.top - 8 - menu.offsetHeight : r.bottom + 6)) + 'px';
+  menu.style.left = (Math.min(window.innerWidth - menu.offsetWidth - 10, r.left - 180)) + 'px';
+  _activeMenu = menu;
+  setTimeout(() => {
+    document.addEventListener('click', onOutside, { capture: true, once: true });
+  }, 0);
+  function onOutside(e) {
+    if (menu.contains(e.target)) {
+      document.addEventListener('click', onOutside, { capture: true, once: true });
+      return;
+    }
+    closeFontMenu();
+  }
+}
+function closeFontMenu() {
+  if (_activeMenu && _activeMenu.parentNode) _activeMenu.parentNode.removeChild(_activeMenu);
+  _activeMenu = null;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// SERIALIZE + SAVE
+// ──────────────────────────────────────────────────────────────────
+// Reserialize the I18N dict using the author's original indentation
+// (2 spaces) + single-quoted keys and values. Escapes special chars.
+// Splices the rebuilt block back into the raw HTML at the exact range
+// captured during parse so unrelated bytes don't shift.
+// ══════════════════════════════════════════════════════════════════
+function serializeI18N() {
+  const indent = '  ';
+  const out = ['{'];
+  State.langs.forEach((lang, li) => {
+    out.push(indent + lang + ': {');
+    const entries = State.keyOrder
+      .filter(k => State.i18n[lang] && State.i18n[lang][k] !== undefined)
+      .map(k => {
+        const v = jsStr(String(State.i18n[lang][k] == null ? '' : State.i18n[lang][k]));
+        const keyStr = jsKey(k);
+        return indent + indent + keyStr + ': ' + v + ',';
+      });
+    out.push(entries.join('\n'));
+    out.push(indent + '}' + (li < State.langs.length - 1 ? ',' : ''));
+  });
+  out.push('}');
+  return out.join('\n');
+}
+
+function jsKey(k) {
+  // Emit as identifier if safe, else single-quoted string.
+  if (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(k)) return k;
+  return "'" + k.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + "'";
+}
+function jsStr(s) {
+  // Prefer single quotes, escape embedded single quotes + backslashes.
+  return "'" + s.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n') + "'";
+}
+
+document.getElementById('btnSave').addEventListener('click', async () => {
+  if (!State.rawHtml) return;
+  const serialized = serializeI18N();
+  const before = State.rawHtml.slice(0, State._i18nStart);
+  const after  = State.rawHtml.slice(State._i18nEnd);
+  const newHtml = before + serialized + after;
+
+  try {
+    if (State.fileHandle) {
+      // Request write permission (Chromium prompts once per session).
+      const perm = await State.fileHandle.queryPermission({ mode: 'readwrite' });
+      if (perm !== 'granted') {
+        const req = await State.fileHandle.requestPermission({ mode: 'readwrite' });
+        if (req !== 'granted') throw new Error('Write permission denied');
+      }
+      const w = await State.fileHandle.createWritable();
+      await w.write(newHtml); await w.close();
+      State.rawHtml = newHtml;
+      // Re-parse to refresh the captured byte range after our edit shifted the offsets.
+      const { i18n, keyOrder, langs } = parseI18N(newHtml);
+      State.i18n = i18n; State.keyOrder = keyOrder; State.langs = langs;
+      State.dirty = false;
+      setStatus('Saved to ' + (State.fileName || 'file'), 'ok');
+      document.getElementById('btnSave').textContent = 'Save';
+    } else {
+      // Fallback: download a copy.
+      const blob = new Blob([newHtml], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = State.fileName || 'index.html';
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      State.rawHtml = newHtml;
+      State.dirty = false;
+      setStatus('Downloaded ' + (State.fileName || 'index.html') + ' — replace it manually', 'warn');
+      document.getElementById('btnSave').textContent = 'Save';
+    }
+  } catch (e) {
+    setStatus('Save failed: ' + e.message, 'err');
+    console.error(e);
+  }
+});
+
+function markDirty() {
+  State.dirty = true;
+  const btn = document.getElementById('btnSave');
+  btn.textContent = 'Save *';
+  btn.disabled = false;
+}
+
+// Warn before navigating away if there are unsaved edits.
+window.addEventListener('beforeunload', (e) => {
+  if (State.dirty) { e.preventDefault(); e.returnValue = ''; }
+});
+
+// ══════════════════════════════════════════════════════════════════
+// Helpers
+// ══════════════════════════════════════════════════════════════════
+function escapeHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// Keyboard shortcut: Ctrl/Cmd+S → save
+window.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+    e.preventDefault();
+    const btn = document.getElementById('btnSave');
+    if (!btn.disabled) btn.click();
+  }
+});
+</script>
+
+</body>
+</html>

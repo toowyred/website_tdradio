@@ -1,0 +1,647 @@
+# ─────────────────────────────────────────────────────────────
+# This is the Cloudflare version.
+# Upload this file to: Cloudflare afest-assets/twysted/radio/cf-signal.dat
+# Audio tracks live in: Cloudflare afest-assets/twysted/radio/tracks/
+# ─────────────────────────────────────────────────────────────
+# BASE VALUES apply from sec 0. Timeline events swap values at a given time.
+# Time tokens accept (secN) or (minM:S):
+#   signal(sec96) = ID
+#   decoder(min4:24) = TWISTED DUALITY
+# Prints are centered-upper overlays for N seconds:
+#   print(sec52) = Make a motherfucking big ass circle!; d=3
+#   d= may be omitted; falls back to global print.default (below).
+# Crossfade between tracks uses crossfade.ms (ms) + crossfade.noise (0..1).
+#
+# ─────────────────────────────────────────────────────────────
+# KEY NAMING CONVENTION — dot-namespaced
+#   Legacy forms are still accepted (parser rewrites them on ingest) but use
+#   the dot convention for anything new. Current groupings:
+#     offline.file / offline.signal / offline.decoder / offline.status /
+#        offline.access / offline.origin / offline.vibe   (was *_offline)
+#     wsi.line1 / wsi.line2                                (was wsi-line1/2)
+#     srt.sub  — stacked subtitle file (existing SRT behavior)
+#     srt.print — second SRT whose cues fire as print-overlay events
+#     cycler.tick / print.default / crossfade.ms /
+#        crossfade.noise / teaser.sec                      (was camelCase)
+#   WebAudio_track / WebAudio_artist / WebAudio_album stay as-is — the prefix
+#   is deliberate: "lock-screen / MediaSession channel, not the timeline."
+#
+# ─────────────────────────────────────────────────────────────
+# CYCLE TOKENS — signal / decoder / vibe accept ||-separated values that
+#   rotate in the track-card on each cycler.tick:
+#     signal = A||B||A                        → cycles A → B → A
+#     decoder= TWISTED DUALITY||MADEON; t=3   → per-field tick override (sec)
+#     vibe   = hype||chaotic; localizeBrands=0,1  → per-token brand-alias opt-out
+#   Strip-top (track name line) flattens || to " x " — no cycling there.
+#   Timeline swap (e.g. signal(sec90)=X||Y) resets the cycle to the new tokens.
+#
+# ─────────────────────────────────────────────────────────────
+# PRINT + SRT.PRINT MARKUP — HTML subset, safe inside print() values AND
+# inside srt.print cue text. Everything not on this list is HTML-escaped.
+#   <b>bold</b>, <i>italic</i>, <u>underline</u>    — text emphasis
+#   <strong>/<em>                                    — aliases for b/i
+#   <br>  OR  \n                                     — line break (two-line prints OK)
+#   &nbsp; / &#160;                                  — non-breaking space
+#   <span class="c-accent">…</span>                  — theme-aware color span
+#   {base|ruby}                                       — ruby reading, e.g. {漢字|かんじ}
+#   <img>filename</img>                               — print-manifest image token
+#
+#   Class allowlist for <span>:
+#     c-accent  — current theme accent   (e.g. orange / golden / white)
+#     c-crit    — red   (warning)
+#     c-good    — green (success)
+#     c-muted   — muted gray
+#     c-dim     — deeper muted
+#     t-big     — 1.2× text size
+#     t-tiny    — 0.8× text size
+#   No  style= / id= / on*=  attributes. Any class outside this list is dropped
+#   and the text survives unstyled.
+#
+# ─────────────────────────────────────────────────────────────
+# START + SILENT + TEASER
+#   start=(sec10)  — track begins at this offset (tuning-bar below this point
+#                    is greyed + unclickable; seeks + godmode clamp to it).
+#                    Accepts (secN), (minM:S), or a bare number of seconds.
+#   silent=(sec0)-(sec4); (min5:04)-(end)
+#                  — ranges that are silent or very faint. Mid-track ranges are
+#                    parsed + stored for future hooks (station-ID voice,
+#                    visualizer duck, transition stinger) but the player does
+#                    NOT act on them today. (end) resolves to track duration.
+#                  — Outro range (ends within 2 s of duration, or uses -(end))
+#                    triggers the glitch teaser: distorted next-track preview
+#                    during the silent tail, wet→dry blend, real next track
+#                    picks up at the teaser's end offset. No re-fetch; the
+#                    next track is pre-loaded during the outro approach.
+#   teaser.sec = N  — optional author cap on teaser length (seconds). Unset →
+#                    device + outro-length + next-track's first print() decide.
+#                    Potato devices skip the teaser entirely and fall through
+#                    to the standard crossfade + noise bed.
+#
+# ─────────────────────────────────────────────────────────────
+# THEMES (current list + authoring convention for future themes)
+#   Theme slugs are lowercase snake_case. Current set:
+#     dark_orange   — default TD Brutalist industrial orange
+#     golden_green  — warmer amber/green variant
+#     mono          — monochromatic white (waveforms rainbow-cycle to BPM)
+#   Future theme names: snake_case, lowercase, ≤24 chars, no spaces.
+#   Each new theme lives as  [data-theme="name"] {...}  in index.html with
+#   its own CSS-variable block (--accent / --accent-dim / --fg / --bg / etc.).
+#
+#   COLOR REFERENCE (current theme accents):
+#     dark_orange  : #de7029
+#     golden_green : #C8A153
+#     mono         : #FFFFFF   (plus rainbow LFO on waveforms)
+#   Inline color-span vars also available via <span class="c-*">:
+#     --accent / --accent-dim / --crit / --good / --muted / --dim / --fg
+#
+#   PLANNED TIMELINE EVENTS (reserved — not yet implemented, parser tolerates):
+#     theme(sec60)=mono                  — switch theme on the fly
+#     theme(sec60)=auto                  — revert to URL ?sun= / local-hour
+#     waves.color(sec90)=#de7029         — waveform tint override at time N
+#     waves.color(sec120)=accent         — "accent" resolves to current theme
+#   Until wired, the Player stores these events silently and does nothing with
+#   them. Safe to author ahead of time; no listener impact.
+#
+=================================================================
+# ── GLOBAL RULES ─────────────────────────────────────────────────
+cycler.tick=4.2
+print.default=5
+crossfade.ms=400
+crossfade.noise=0.06
+=================================================================
+#
+#
+# 001
+=================================================================
+File: td-audio001-high.wav
+File: td-audio001-normal.mp3
+WebAudio_track	=In The Pit (Edit)
+WebAudio_artist	=TWISTED DUALITY
+WebAudio_album	=Remixes
+#
+# ── base values variables ──────────────────────────────────────001
+signal		=In ??? P?? (Remix)
+decoder		=TWISTED DUALITY
+status		=noncompiled
+access		=none
+origin		=TWISTED DUALITY
+vibe			=idk dubstep?
+#
+# ── timeline ────────────────────────────────────────────────001
+signal(sec51)	=In The Pit (Remix)
+origin(sec51)	=Skellism x Terror Bass x Lil Jon
+#
+# ── prints ──────────────────────────────────────────────────001
+print(sec52)	=Make a motherfucking big ass circle!; d=3
+print(sec55)	=Everybody in the pit break the fuck out!; d=3
+=================================================================
+#
+#
+# 002
+================================================================
+File: td-audio002-normal.mp3
+WebAudio_track	=Echoes Behind (Edit)
+WebAudio_artist	=TWISTED DUALITY
+WebAudio_album	=Mashups
+#
+# ── base values variables ───────────────────────────────────002
+signal		=Echoes Behind (VIP)
+decoder		=TWISTED DUALITY
+status		=noncompiled
+access		=check
+origin		=TWISTED DUALITY
+vibe			=0
+#
+# ── timeline ────────────────────────────────────────────────002
+signal(sec79)	=Echoes Behind x ???
+signal(sec97)	=Echoes Behind x Shelter
+signal(sec115)	=Shelter (TWYSTED Evil Edit)
+signal(sec202)	=Echoes Behind (VIP)
+signal(sec218)	=Shelter (TWYSTED Evil Edit)
+origin(sec96)	=TWISTED DUALITY x MADEON x Porter Robinson
+origin(sec115)	=MADEON x TWISTED DUALITY
+origin(sec134)	=MADEON x Porter Robinson x TWISTED DUALITY
+origin(sec153)	=TWISTED DUALITY x Porter Robinson x MADEON
+origin(sec202)	=TWISTED DUALITY
+origin(sec218)	=MADEON x Porter Robinson x TWISTED DUALITY
+#
+# ── prints ──────────────────────────────────────────────────002
+print(sec103)	=It's wonderful; d=3
+print(sec183)	=...need somebody?; d=3
+print(sec227)	=I need somebody that's wonderful; d=5
+=================================================================
+#
+#
+# 003
+=================================================================
+File: td-audio003-normal.mp3
+WebAudio_track	=Golden Hour - JVKE (RE/IMAGINED)
+WebAudio_artist	=TWISTED DUALITY
+WebAudio_album	=RE/IMAGINED
+#
+# ── base values variables ───────────────────────────────────003
+signal		=Golden Hour
+decoder		=RE/IMAGINED
+status		=compiled
+access		=granted
+origin		=JVKE x ILLENIUM x NURKO
+vibe			=0
+#
+# ── timeline ────────────────────────────────────────────────003
+origin(sec21)	=TWISTED DUALITY: RE/IMAGINED
+origin(sec30)	=JVKE x ILLENIUM x NURKO
+origin(sec49)	=TWISTED DUALITY: RE/IMAGINED
+origin(sec68)	=TWISTED DUALITY x JVKE x ILLENIUM x NURKO
+origin(sec107)	=TWISTED DUALITY: RE/IMAGINED
+origin(sec120)	=TWISTED DUALITY x JVKE x ILLENIUM x NURKO
+=================================================================
+#
+#
+# 004
+=================================================================
+File: td-audio004-normal.mp3
+silent		=(min5:04)-(end)
+WebAudio_track	=Thicc Boi (TWYSTED Remix)
+WebAudio_artist	=TWISTED DUALITY
+WebAudio_album	=Remixes
+#
+# ── base values variables ───────────────────────────────────004
+signal=Thicc Boi (TWYSTED Remix)
+decoder		=TWISTED DUALITY
+status		=noncompiled
+access		=check
+origin		=TWISTED DUALITY x WOOLI x KOMPANY
+vibe			=Bruhstep
+#
+# ── timeline ────────────────────────────────────────────────004
+signal(sec21)	=Damn Boi He Thicc
+signal(sec24)	=Thicc Boi (TWYSTED Remix)
+signal(sec129)	=ID
+signal(sec170)	=Thicc Boi (TWYSTED Remix)
+signal(sec196)	=Thicc Boi (TWYSTED Remix v2)
+origin(sec21)	=Anthony Fantano
+origin(sec35)	=WOOLI x KOMPANY
+origin(sec42)	=TWISTED DUALITY x WOOLI x KOMPANY
+origin(sec65)	=Anthony Fantano x TWISTED DUALITY
+origin(sec68)	=WOOLI x KOMPANY x TWISTED DUALITY
+origin(sec86)	=TWISTED DUALITY
+origin(sec103)	=WOOLI x KOMPANY x TWISTED DUALITY
+origin(sec129)	=TWISTED DUALITY
+origin(sec170)	=TWISTED DUALITY x KOMPANY X WOOLI
+vibe(sec68)	=Beeps
+vibe(sec93)	=Complaining
+vibe(sec95)	=Womp womp
+vibe(sec102)	=Dubstep
+vibe(sec129)	=Hardstyle
+vibe(sec144)	=Basshouse
+vibe(sec170)	=Cardio!
+vibe(sec179)	=Dubstep
+vibe(sec200)	=Get ready... 
+vibe(sec219)	=oh?
+vibe(sec237)	=RAGE
+vibe(sec278)	=Dubstep
+#
+# ── prints ──────────────────────────────────────────────────004
+print(sec3)	=Yo Kyle!; d=2
+print(sec8)	=We could make a new intro, I suppose...; d=3
+print(sec12)	=What if we start off with; d=3
+print(sec16)	=THICC!; d=3
+print(sec21)	=Damn boi he thicc!; d=3
+print(sec27)	=TWYSTED; d=3
+print(sec30)	=Look at that son of a *beep*; d=2
+print(sec50)	=V-I-P; d=3
+print(sec53)	=TWYSTED; d=3
+print(sec87)	=*beats-box-beats-box*; d=3
+print(sec93)	=Should we make a new intro or something!?; d=3
+print(sec128)	=What's the difference for you?; d=3
+=================================================================
+#
+#
+# 005
+=================================================================
+File: td-audio005-normal.mp3
+WebAudio_track	=ID
+WebAudio_artist	=TWISTED DUALITY
+WebAudio_album	=IDs
+#
+# ── base values variables ───────────────────────────────────005
+signal		=ID
+decoder		=TWISTED DUALITY
+status		=noncompiled
+access		=none
+origin		=TWISTED DUALITY
+vibe			=Dubstep
+#
+# ── timeline ────────────────────────────────────────────────005
+signal(sec21)	=Kiss of Death x ID
+signal(sec51)	=ID
+signal(sec100)	=ID x Kiss of Death
+signal(sec120)	=Kiss of Death - REZZ (Remix)
+origin(sec21)	=REZZ x TWISTED DUALITY
+origin(sec51)	=TWISTED DUALITY
+origin(sec100)	=TWISTED DUALITY x REZZ 
+decoder(sec120)	=TWISTED DUALITY: RE/IMAGINED
+=================================================================
+#
+#
+# 006
+=================================================================
+File: td-audio006-normal.mp3
+WebAudio_track	=Death by Techno
+WebAudio_artist	=TWISTED DUALITY Remix
+WebAudio_album	=Remixes
+#
+# ── base values variables ───────────────────────────────────006
+signal		=Death by Techno
+decoder		=TWISTED DUALITY: RE/IMAGINED
+status		=noncompiled
+access		=none
+origin		=TWISTED DUALITY x Heart/Less
+vibe			=Techno
+#
+# ── timeline ────────────────────────────────────────────────006
+origin(sec73)	=TWISTED DUALITY
+origin(sec90)	=TWISTED DUALITY x Heart/Less
+origin(sec133)	=TWISTED DUALITY
+origin(sec170)	=TWISTED DUALITY x Heart/Less
+#
+# ── prints ──────────────────────────────────────────────────006
+print(sec31)	=Death by Techno; d=2
+print(sec37)	=Death by Techno; d=2
+print(sec45)	=Death by Techno; d=2
+print(sec58)	=I wanna die by Techno; d=3
+print(sec60)	=That's how I wanna die.; d=2
+print(sec62)	=I wanna die by Techno; d=3
+print(sec64)	=That's how I wanna die.; d=3
+print(sec170)	=Death by Techno; d=2
+=================================================================
+#
+#
+# 007
+=================================================================
+File: td-audio007-normal.mp3
+WebAudio_track	=If It Means A Lot To You (Remix)
+WebAudio_artist	=TWISTED DUALITY
+WebAudio_album	=Remixes
+#
+# ── base values variables ───────────────────────────────────007
+signal		=If It Means A Lot To You
+decoder		=RE/IMAGINED x A Day to Remember
+status		=noncompiled
+access		=none
+origin		=TWISTED DUALITY x A Day to Remember
+vibe			=Dubstep
+#
+# ── timeline ────────────────────────────────────────────────007
+origin(sec73)	=TWISTED DUALITY: RE/IMAGINED
+origin(sec90)	=A Day to Remember x TWISTED DUALITY
+origin(sec133)	=TWISTED DUALITY: RE/IMAGINED
+origin(sec170)	=A Day to Remember x TWISTED DUALITY
+#
+# ── prints ───────────────────────────────────────────────────007
+print(sec88)	=Now everybody's singing; d=3
+print(sec103)	=If you can wait 'til I get home; d=3
+print(sec106)	=Now everybody's singing; d=2
+print(sec110)	=Then I swear we can make this last; d=3
+=================================================================
+#
+#
+# 008
+=================================================================
+File: td-audio008-normal.mp3
+WebAudio_track	=The Game - Jauz (Remix)
+WebAudio_artist	=TWISTED DUALITY
+WebAudio_album	=Remixes
+#
+# ── base values variables ───────────────────────────────────008
+signal		=The Game - Jauz (Remix)
+decoder		=TWISTED DUALITY: RE/IMAGINED
+status		=noncompiled
+access		=none
+origin		=Jauz x TWISTED DUALITY
+vibe			=EDM/Rock
+#
+# ── timeline ────────────────────────────────────────────────008
+signal(sec124)	=The Game x ID
+decoder(sec124)	=Jauz x TWISTED DUALITY
+decoder(sec136)	=TWISTED DUALITY x blanke
+signal(sec136)	=ID x Imperium
+signal(sec166)	=The Game - Jauz (Remix)
+origin(sec130)	=TWISTED DUALITY: RE/IMAGINED
+origin(sec136)	=TWISTED DUALITY x blanke
+origin(sec166)	=Jauz x TWISTED DUALITY
+=================================================================
+#
+#
+# 009
+=================================================================
+File: td-audio009-normal.mp3
+WebAudio_track	=Scars of a Wilted Culture (MUERTE)
+WebAudio_artist	=TWISTED DUALITY
+WebAudio_album	=RE/IMAGINED
+#
+# ── base values variables ───────────────────────────────────009
+signal		=Scars of a Wilted Culture (MUERTE)
+decoder		=TWISTED DUALITY: RE/IMAGINED
+status		=compiled
+access		=unknown
+origin		=MUERTE x TWISTED DUALITY
+vibe			=Midtempo/Riddim
+#
+# ── prints ──────────────────────────────────────────────────009
+print(sec5)	=WILTED CULTURE x HALO SCAR; d=5
+print(sec10)	=<img>MUERTE-logo</img>; d=5
+#
+# ── timeline ────────────────────────────────────────────────009
+vibe(sec20)	=Midtempo
+signal(sec40)	=HALO SCAR x WILTED CULTURE
+vibe(sec40)	=Dubstep
+decoder(sec40)	=MUERTE
+origin(sec40)	=MUERTE x TWISTED DUALITY
+signal(sec60)	=Scars of a Wilted Culture (MUERTE)
+decoder(sec60)	=TWISTED DUALITY: RE/IMAGINED
+origin(sec60)	=MUERTE x TWISTED DUALITY: RE/IMAGINED
+signal(sec123)	=HALO SCAR (MUERTE)
+vibe(sec120)	=Riddim
+decoder(sec123)	=TWISTED DUALITY Edit
+origin(sec123)	=MUERTE x TWISTED DUALITY: RE/IMAGINED
+signal(sec151)	=Scars of a Wilted Culture (MUERTE)
+vibe(sec151)	=Dubstep
+decoder(sec151)	=TWISTED DUALITY: RE/IMAGINED
+vibe(sec180)	=Post-rock
+signal(sec195)	=Signal In The Dark
+vibe(sec195)	=Techno
+decoder(sec195)	=TWISTED DUALITY
+origin(sec195)	=TWISTED DUALITY
+print(sec227)	=Is anyone there?; d=3
+print(sec230)	=誰か、そこにいますか?; d=4
+print(sec234)	=そこにいますか?; d=4
+signal(sec250)	=Signal In The Dark x HALO SCAR
+decoder(sec250)	=TWISTED DUALITY x MUERTE
+origin(sec250)	=MUERTE x TWISTED DUALITY: RE/IMAGINED
+signal(sec264)	=Scars of a Wilted Culture (MUERTE)
+vibe(sec255)	=Midtempo
+decoder(sec264)	=TWISTED DUALITY: RE/IMAGINED
+origin(sec264)	=MUERTE x TWISTED DUALITY
+=================================================================
+#
+#
+# 010
+=================================================================
+File: td-audio010-high.mp3
+WebAudio_track	=Imperium (Madeon)
+WebAudio_artist	=RE/IMAGINED x blanke
+WebAudio_album	=The RE/mixes
+#
+# ── base values variables ───────────────────────────────────010
+signal		=???????? (??????)
+decoder		=TWISTED DUALITY
+status		=compiled
+access		=unknown
+origin		=TWISTED DUALITY
+vibe			=Dubstep||Midtempo||Bass
+#
+# ── prints ──────────────────────────────────────────────────010
+print(sec)
+#
+# ── timeline ────────────────────────────────────────────────010
+origin(sec2)	=TWISTED DUALITY: RE/IMAGINED
+origin(sec19)	=MADEON x blanke
+signal(sec19)	=Imperium (MADEON)
+decoder(sec19)	=blanke x TWISTED DUALITY||RE/IMAGINED x blanke
+decoder(sec112)	=TWISTED DUALITY: RE/IMAGINED
+origin(sec112)	=TWISTED DUALITY
+decoder(sec118)	=blanke x TWISTED DUALITY||RE/IMAGINED x blanke
+origin(sec118)	=MADEON x blanke||TWISTED DUALITY
+=================================================================
+#
+#
+# 011
+=================================================================
+File: td-audio011-normal.mp3
+WebAudio_track	=ID - ID
+WebAudio_artist	=TWISTED DUALITY
+WebAudio_album	=IDs
+#
+# ── base values variables ───────────────────────────────────011
+signal		=HALO SCAR (TWISTED DUALITY Edit)
+decoder		=MUERTE
+status		=unknown
+access		=unknown
+origin		=MUERTE x TWISTED DUALITY
+vibe			=Riddim||Midtempto
+#
+# ── prints ──────────────────────────────────────────────────011
+print(sec2)	=<img>MUERTE-logo</img>; d=5
+#
+# ── timeline ────────────────────────────────────────────────011
+signal(sec68)	=ID x ID
+decoder(sec68)	=TWISTED DUALITY||RE/IMAGINED
+origin(sec68)	=TWISTED DUALITY
+vibe(sec68)	=Electronic Rock
+signal(sec96)	=IDs x HALO SCAR
+decoder(sec96)	=TWISTED DUALITY||RE/IMAGINED x MUERTE
+origin(sec96)	=TWISTED DUALITY x MUERTE 
+vibe(sec96)	=Dubstep
+signal(sec124)	=ID
+decoder(sec124)	=TWISTED DUALITY
+origin(sec124)	=TWISTED DUALITY
+vibe(sec124)	=Electronic Rock
+signal(sec177)	=HALO SCAR (RE/IMAGINED)
+decoder(sec177)	=MUERTE x TWISTED DUALITY
+origin(sec177)	=MUERTE x TWISTED DUALITY
+vibe(sec177)	=Electronic Rock||Dubstep
+signal(sec205)	=HALO SCAR (RE/IMAGINED) x ID
+=================================================================
+#
+#
+# 012
+=================================================================
+File: td-audio012-normal.mp3
+File: td-audio012-high.mp3
+WebAudio_track	=Code Rewrite, Heart Reboot x Searching
+WebAudio_artist	=TWISTED DUALITY x Josh Daly
+WebAudio_album	=RE/IMAGINED
+srt.sub		=1; td-audio012.srt
+srt.print		=0; 
+#
+# ── base values variables ───────────────────────────────────012
+signal		=Code Rewrite, Heart Reboot              
+decoder		=TWISTED DUALITY||RE/IMAGINED
+status		=Complied
+access		=check
+origin		=TWISTED DUALITY
+vibe			=EDM||Pop Rock
+#
+# ── prints ──────────────────────────────────────────────────012
+print(sec2)	=<img>josh-searching</img>; 				d=6
+print(sec9)	=<img>LYOKO-black</img>; 					d=6
+print(sec118)	=Embracing the route full of mistakes;		d=3
+print(sec127)	=As long as you're here;					d=2
+print(sec129)	=Countless times we start;					d=4
+print(sec179)	=This shattered map is covered up in scars;	d=4
+print(sec183)	=Before I fold it up and walk away;			d=3
+print(sec187)	=Echoes of your voice across the dark;		d=5
+print(sec192)	=I locked the coordinates in;				d=2
+print(sec196)	=Even a future they say can't exist;			d=2
+print(sec199)	=If we keep pushing for an update now;		d=2
+print(sec202)	=This ambiguous "See-you-nara";				d=2
+print(sec205)	=Just overwrite it and clear out the code;		d=6
+print(sec239)	=Dragging this shattered today along with me;	d=6
+print(sec247)	=If I am with you;						d=3
+print(sec251)	=Infinite restart!;						d=4
+#
+# ── timeline ────────────────────────────────────────────────012
+signal(sec8)	=Code Rewrite, Heart Reboot x SEARCHING
+decoder(sec8)	=TWISTED DUALITY x Josh Daly||RE/IMAGINED x Josh Daly
+origin(sec8)	=TWISTED DUALITY x Josh Daly
+vibe(sec8)		=Electronic Rock||EDM||Pop Rock
+signal(sec27)	=SEARCHING (German Edit)
+signal(sec30)	=SEARCHING (TWISTED DUALITY Cover)
+decoder(sec27)	=Josh Daly||Josh Daly x RE/IMAGINED
+origin(sec27)	=TWISTED DUALITY x Josh Daly
+signal(sec47)	=SEARCHING (TWISTED DUALITY Remix)
+signal(sec55)	=Code Rewrite, Heart Reboot
+decoder(sec55)	=TWISTED DUALITY||RE/IMAGINED
+origin(sec55)	=TWISTED DUALITY: RE/IMAGINED
+signal(sec72)	=Code Rewrite, Heart Reboot (Resung)
+decoder(sec72)	=TWISTED DUALITY x Lukas Vesper
+origin(sec72)	=TWISTED DUALITY: RE/IMAGINED
+signal(sec90)	=SEARCHING (TWISTED DUALITY Cover)
+decoder(sec90)	=Josh Daly||Josh Daly x RE/IMAGINED
+origin(sec90)	=TWISTED DUALITY x Josh Daly
+signal(sec108)	=SEARCHING x Code Rewrite, Heart Reboot
+decoder(sec108)	=RE/IMAGINED||TWISTED DUALITY x Josh Daly
+origin(sec108)	=TWISTED DUALITY x Josh Daly
+signal(sec113)	=Code Rewrite, Heart Reboot (Original)
+decoder(sec113)	=TWISTED DUALITY: RE/IMAGINED
+origin(sec113)	=TWISTED DUALITY: RE/IMAGINED
+signal(sec131)	=SEARCHING (TWISTED DUALITY Cover)
+decoder(sec131)	=Josh Daly||Josh Daly x RE/IMAGINED
+origin(sec131)	=Josh Daly x TWISTED DUALITY
+signal(sec146)	=Code Rewrite, Heart Reboot (VIP)
+decoder(sec146)	=Lukas Vesper x RE/IMAGINED
+origin(sec146)	=TWISTED DUALITY x Lukas Vesper
+signal(sec158)	=Code Rewrite, Heart Reboot (VIP)
+decoder(sec158)	=TWISTED DUALITY: RE/IMAGINED
+origin(sec158)	=TWISTED DUALITY: RE/IMAGINED
+signal(sec163)	=Code Rewrite, Heart Reboot x 旅行：領コア
+decoder(sec163)	=TWISTED DUALITY x RE/IMAGINED||双極の螺旋 x サイコウチク
+origin(sec163)	=TWISTED DUALITY x RE/IMAGINED
+signal(sec179)	=旅行：領コア (Journey) x Code Rewrite, Heart Reboot
+decoder(sec179)	=双極の螺旋：サイコウチク||双極の螺旋：リイマジン
+origin(sec179)	=TWISTED DUALITY x RE/IMAGINED
+signal(sec211)	=旅行：領コア x SEARCHING (TWISTED DUALITY Cover)
+decoder(sec211)	=双極の螺旋 x Josh Daly||Josh Daly x RE/IMAGINED
+origin(sec211)	=Josh Daly x TWISTED DUALITY
+signal(sec228)	=旅行：領コア
+decoder(sec228)	=双極の螺旋 ||RE/IMAGINED||TWISTED DUALITY
+origin(sec228)	=TWISTED DUALITY||RE/IMAGINED
+signal(sec254)	=旅行：領コア x SEARCHING
+decoder(sec254)	=TWISTED DUALITY x Josh Daly
+origin(sec254)	=Josh Daly x TWISTED DUALITY
+=================================================================
+#
+#
+# 013
+=================================================================
+File: td-audio013-normal.mp3
+srt.sub		=1; td-audio013.srt
+srt.print		=1; td-audio013-print.srt
+WebAudio_track	=Herz-Neustart (旅行：領コア)
+WebAudio_artist	=TWISTED DUALITY
+WebAudio_album	=RE/IMAGINED
+start			=(sec43)
+#
+# ── base values variables ───────────────────────────────────013
+signal		=Code-Überschreibung, Herz-Neustart
+decoder		=TWISTED DUALITY：RE/IMAGINED
+status		=unknown
+access		=unknown 
+origin		=TWISTED DUALITY x RE/IMAGINED
+vibe			=EDM||Pop Rock
+#
+# ── prints ──────────────────────────────────────────────────013
+print(sec)
+#
+# ── timeline ────────────────────────────────────────────────013
+signal(sec10)		=Code Rewrite, Heart Reboot (German/Japanese)
+decoder(sec10)		=TWISTED DUALITY||RE/IMAGINED
+origin(sec10)		=TWISTED DUALITY：RE/IMAGINED
+signal(sec98)		=Herz-Neustart (旅行：領コア)
+signal(sec111)		=Code-Überschreibung, Herz-Neustart
+signal(sec281)		=Code Rewrite, Heart Reboot (German/Japanese)
+signal(sec229)		=Herz-Neustart (旅行：領コア)
+wsi.line1(sec98)		=波・アイソレート RADIO
+wsi.line1(sec111)	=WSI-FUNKEMPFÄNGER
+wsi.line1(sec167)	=波・アイソレート RADIO
+wsi.line1(sec183)	=WSI-FUNKEMPFÄNGER
+wsi.line1(sec281)	=WSI RADIO RECEIVER
+wsi.line1(sec229)	=WSI-FUNKEMPFÄNGER
+wsi.line1(sec233)	=波・アイソレート RADIO
+=================================================================
+#
+#
+# 014
+=================================================================
+File: 
+File: 
+WebAudio_track	=
+WebAudio_artist	=
+WebAudio_album	=
+#
+# ── base values variables ───────────────────────────────────014
+signal		=
+decoder		=
+status		=
+access		=
+origin		=
+vibe			=
+#
+# ── prints ──────────────────────────────────────────────────014
+print(sec)
+#
+# ── timeline ────────────────────────────────────────────────014
+
+=================================================================
+

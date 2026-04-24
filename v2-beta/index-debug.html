@@ -1,0 +1,2763 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark_orange">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="https://assets.afest.io/afest-elements/favicon.png">
+<title>TWISTED DUALITY · Radio Receiver</title>
+<style>
+  @font-face {
+    font-family: 'WDXL Lubrifont';
+    src: local('WDXL Lubrifont JPN VNM'), local('WDXLLubrifontJPNVNM'),
+         local('WDXL Lubrifont JPN'), local('WDXLLubrifontJPN'),
+         url('../fonts/WDXLLubrifontJPNVNM-Regular.woff2') format('woff2');
+  }
+
+  :root, [data-theme="dark_orange"] {
+    --bg: #0a0a0a; --panel: #111; --panel-soft: #161616; --border: #222;
+    --accent: #de7029; --accent-2: #5fa7e8;
+    --accent-dim: rgba(222,112,41,0.35);
+    --grid-rgba: rgba(222,112,41,0.06);
+    --fg: #e6e6e6; --muted: #888; --dim: #555;
+    --crit: #f44336; --good: #4caf50;
+    --line-color: #e6e6e6; --fill-color: #0a0a0a;
+  }
+  [data-theme="golden_green"] {
+    --bg: #0a3835; --panel: #0e2b29; --panel-soft: #123734; --border: #1d4a46;
+    --accent: #C8A153; --accent-2: #82b8d0;
+    --accent-dim: rgba(200,161,83,0.38);
+    --grid-rgba: rgba(200,161,83,0.07);
+    --fg: #e8dcc0; --muted: #7c8c86; --dim: #5a6b66;
+    --crit: #ff7a6a; --good: #6fb37a;
+    --line-color: #e8dcc0; --fill-color: #0a3835;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: var(--bg); color: var(--fg);
+    font-family: 'WDXL Lubrifont', 'Courier New', monospace;
+    position: relative;
+    -webkit-user-select: none; user-select: none;
+  }
+
+  /* grid-bg + vignette */
+  body::before {
+    content:''; position:fixed; inset:0; z-index:0; pointer-events:none;
+    background-image:
+      linear-gradient(var(--grid-rgba) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-rgba) 1px, transparent 1px);
+    background-size: 44px 44px;
+    mask-image: radial-gradient(circle at center, #000 30%, transparent 85%);
+    -webkit-mask-image: radial-gradient(circle at center, #000 30%, transparent 85%);
+  }
+  body::after {
+    content:''; position:fixed; inset:0; z-index:0; pointer-events:none;
+    background:
+      radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,0.75) 100%),
+      repeating-linear-gradient(to bottom, rgba(255,255,255,0.02) 0 1px, transparent 1px 3px);
+  }
+
+  /* canvas fills viewport */
+  #viz {
+    position: fixed; top: 0; left: 0; z-index: 1;
+    width: 100%; height: calc(100% - 96px);
+  }
+
+  /* ── top bar ── */
+  .top-bar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 14px;
+    background: rgba(10,10,10,0.55);
+    backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+  }
+  .top-bar a {
+    font-size: 0.6rem; letter-spacing: 2px; color: var(--muted);
+    text-decoration: none; text-transform: uppercase; padding: 5px 8px;
+    transition: opacity 0.2s, color 0.2s;
+  }
+  .top-bar a:hover { color: var(--fg); opacity: 0.85; }
+  .top-bar .bar-spacer { flex: 1; }
+  .top-bar .bar-title {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    font-size: 12px; letter-spacing: 5px; text-transform: uppercase;
+    color: var(--fg); white-space: nowrap;
+  }
+
+  /* hamburger */
+  .bar-hamburger {
+    font-family: inherit; font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
+    background: rgba(255,255,255,0.06); color: var(--muted);
+    border: 1px solid rgba(255,255,255,0.08); padding: 5px 12px; cursor: pointer;
+    transition: color 0.2s, border-color 0.2s;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .bar-hamburger:hover { color: var(--fg); border-color: rgba(255,255,255,0.18); }
+  .bar-hamburger .hamburger-lines {
+    display: flex; flex-direction: column; gap: 3px; width: 14px;
+  }
+  .bar-hamburger .hamburger-lines span {
+    display: block; height: 1.5px; background: currentColor; border-radius: 1px;
+  }
+  .bar-menu {
+    display: none; position: fixed; top: 38px; right: 14px; z-index: 250;
+    background: rgba(10,10,10,0.82);
+    backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+    border: 1px solid rgba(255,255,255,0.08);
+    padding: 10px 6px;
+    flex-direction: column; gap: 4px; min-width: 170px;
+  }
+  .bar-menu.open { display: flex; }
+  .bar-menu .menu-label {
+    font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
+    color: var(--dim); padding: 6px 14px 2px;
+  }
+  .bar-menu button {
+    font-family: inherit; font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
+    background: none; color: var(--muted);
+    border: none; padding: 8px 14px; cursor: pointer;
+    text-align: left; transition: color 0.15s, background 0.15s;
+  }
+  .bar-menu button:hover { color: var(--fg); background: rgba(255,255,255,0.05); }
+  .bar-menu button.active { color: var(--accent); }
+  /* visual separator between menu sections */
+  .bar-menu .menu-sep {
+    height: 1px; background: rgba(255,255,255,0.08); margin: 6px 10px;
+  }
+  /* inline row of choice buttons (transparency/waves) */
+  .bar-menu .menu-row {
+    display: flex; gap: 2px; padding: 0 8px 2px;
+  }
+  .bar-menu .menu-row .mrbtn {
+    flex: 1; padding: 6px 8px;
+    font-size: 10px; letter-spacing: 1.5px;
+    text-align: center;
+    border: 1px solid rgba(255,255,255,0.08);
+    color: var(--muted);
+    background: rgba(255,255,255,0.03);
+  }
+  .bar-menu .menu-row .mrbtn:hover { color: var(--fg); background: rgba(255,255,255,0.08); }
+  .bar-menu .menu-row .mrbtn.active {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: rgba(255,255,255,0.04);
+  }
+
+  /* menu footer — subtle TWDU mark + copyright */
+  .bar-menu .menu-footer {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 4px;
+    margin: 8px 0 2px;
+    padding: 6px 10px 0;
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+  .bar-menu .menu-logo {
+    display: block;
+    max-width: 120px;       /* won't widen the menu; scales down if menu is narrower */
+    max-height: 28px;
+    width: auto; height: auto;
+    object-fit: contain;
+    opacity: 0.28;          /* dark/translucent so a white PNG reads as muted gray */
+  }
+  .bar-menu .menu-copy {
+    /* system font so © + dashes render cleanly regardless of WDXL coverage */
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    font-size: 9px; letter-spacing: 0.5px;
+    color: var(--dim);
+    text-transform: none;
+    text-align: center;
+  }
+
+  /* ── TRANSPARENCY OFF mode: solid opaque surfaces, no backdrop-filter ── */
+  html.no-transparency .top-bar,
+  html.no-transparency .bar-menu,
+  html.no-transparency .card-body,
+  html.no-transparency .tuner,
+  html.no-transparency .tuner .tbtn,
+  html.no-transparency .frequency-panel,
+  html.no-transparency .info-overlay,
+  html.no-transparency .info-panel,
+  html.no-transparency .toast {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  html.no-transparency .top-bar      { background: var(--bg); }
+  html.no-transparency .bar-menu     { background: var(--panel); }
+  html.no-transparency .card-body    { background: var(--panel); }
+  html.no-transparency .tuner        { background: var(--panel); }
+  html.no-transparency .tuner .frequency-panel { background: var(--panel-soft); }
+  html.no-transparency .tuner .tbtn  { background: var(--panel-soft); }
+  html.no-transparency .info-overlay { background: rgba(0,0,0,0.92); }
+  html.no-transparency .info-panel   { background: var(--panel); }
+  html.no-transparency .toast        { background: var(--panel); }
+
+  /* ── brand (bottom-right corner) ── */
+  .brand {
+    position: fixed; bottom: 110px; right: 24px; z-index: 5;
+    text-align: right; pointer-events: none;
+  }
+  .brand .title {
+    font-size: 22px; letter-spacing: 6px; font-weight: bold;
+    color: var(--fg); text-transform: uppercase;
+  }
+  .brand .sub {
+    font-size: 10px; letter-spacing: 3px; color: var(--muted);
+    text-transform: uppercase; margin-top: 3px;
+    pointer-events: auto;
+  }
+  .brand .sub a { color: var(--accent); text-decoration: none; transition: opacity 0.2s; }
+  .brand .sub a:hover { opacity: 0.7; }
+
+  /* ── track card (middle-left edge; vertical COLLAPSE button + 2-col body) ── */
+  .track-card {
+    position: fixed; top: 50%; left: 0;
+    transform: translateY(-50%);
+    z-index: 4;
+    display: flex; align-items: stretch;
+    font-size: 14px; letter-spacing: 0.5px;   /* desktop default; mobile override shrinks */
+    color: var(--fg);
+    /* min-height is set by JS — the tallest vertical label across langs */
+  }
+
+  /* the orange left strip IS the button — solid accent bg, dark text */
+  .card-collapse {
+    flex: 0 0 auto; width: 30px;
+    background: var(--accent);
+    border: none;
+    color: #0a1211;
+    cursor: pointer;
+    writing-mode: vertical-rl;
+    padding: 12px 4px;
+    display: flex; flex-direction: row;
+    align-items: center; justify-content: center;
+    gap: 0;                    /* NBSP inside cc-arrow provides the gap */
+    font-family: inherit;      /* WDXL Lubrifont — condensed display face reads well vertically */
+    font-size: 13px; letter-spacing: 3px; text-transform: uppercase;
+    font-weight: bold;
+    transition: opacity 0.15s, box-shadow 0.15s;
+    white-space: nowrap;
+  }
+  .card-collapse:hover { opacity: 0.88; }
+  .card-collapse:focus-visible { outline: 1px solid #0a1211; outline-offset: -3px; }
+  /* Japanese keeps kanji upright; Latin letters naturally rotate 90° via writing-mode */
+  html[lang="ja"] .card-collapse { text-orientation: upright; }
+  .card-collapse .cc-text { writing-mode: inherit; }
+  .card-collapse .cc-arrow {
+    text-orientation: upright;    /* arrow always displays as authored (↓/↑/←/→) */
+    font-size: 13px;
+  }
+
+  /* card body holds the 2-col label/value grid — animates to 0 width when collapsed */
+  .card-body {
+    background: rgba(0,0,0,0.45);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-left: none;            /* collapse-button has the accent strip */
+    padding: 14px 16px;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: 10px; row-gap: 6px;
+    max-width: 60vw;
+    opacity: 1; overflow: hidden;
+    transition: max-width 0.35s ease, opacity 0.25s ease, padding 0.35s ease, border-width 0.3s ease;
+  }
+  .track-card.collapsed .card-body {
+    max-width: 0; opacity: 0;
+    padding-left: 0; padding-right: 0;
+    border-left-width: 0; border-right-width: 0;
+  }
+
+  .card-body .mrow { display: contents; }
+  .card-body .k {
+    color: var(--muted); text-align: left; white-space: nowrap;
+    font-variant: small-caps; letter-spacing: 1px;
+  }
+  .card-body .v {
+    color: var(--fg); text-align: left;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    max-width: 42vw;
+  }
+  .card-body .v.status-bad,
+  .card-body .v.access-none { color: var(--crit); }
+  .card-body .v.status-good,
+  .card-body .v.access-granted { color: var(--good); }
+  .card-body .v.access-check { color: var(--accent); }
+  .card-body .v.tap {
+    cursor: pointer;
+    border-bottom: 1px dotted currentColor;
+    padding-bottom: 1px;
+    transition: text-shadow 0.15s;
+  }
+  .card-body .v.tap:hover,
+  .card-body .v.tap:focus-visible { text-shadow: 0 0 6px currentColor; outline: none; }
+  .card-body .v.tap.access-granted { color: var(--good); }
+  .card-body .v.tap.access-check   { color: var(--accent); }
+  .card-body .v.tap.access-none    { color: var(--crit); }
+
+  /* empty state: no track yet — hide all rows except Signal, show "(press SCAN)" */
+  .track-card.card-empty .card-body .mrow:not(:first-of-type) { display: none; }
+  .track-card.card-empty .card-body #m-signal {
+    color: var(--muted); font-style: italic; letter-spacing: 0.5px;
+  }
+
+  /* ── FM tuner control strip ── */
+  .tuner {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 150;
+    height: 96px;
+    background: linear-gradient(180deg, rgba(0,0,0,0.3), rgba(0,0,0,0.82));
+    backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+    border-top: 1px solid var(--accent-dim);
+    box-shadow: 0 -12px 40px rgba(0,0,0,0.4);
+    display: grid; grid-template-columns: auto 1fr auto auto; gap: 14px;
+    align-items: stretch; padding: 12px 18px;
+  }
+
+  /* left: frequency display + scan */
+  .tuner .frequency-panel {
+    display: grid; grid-template-rows: 1fr auto; gap: 6px;
+    min-width: 230px; padding: 8px 14px;
+    border: 1px solid var(--border); background: rgba(0,0,0,0.35);
+    border-left: 3px solid var(--accent);
+    position: relative;
+  }
+  .tuner .frequency-panel::before, .tuner .frequency-panel::after {
+    content: ''; position: absolute; width: 10px; height: 10px;
+    border: 1.5px solid var(--accent);
+  }
+  .tuner .frequency-panel::before { top: -1px; left: -1px; border-right: none; border-bottom: none; }
+  .tuner .frequency-panel::after { bottom: -1px; right: -1px; border-left: none; border-top: none; }
+
+  .tuner .freq-row {
+    display: flex; align-items: baseline; gap: 8px;
+    font-family: 'Courier New', monospace;
+  }
+  .tuner .freq-num {
+    font-size: 32px; letter-spacing: 2px; color: var(--muted);
+    font-weight: bold; font-feature-settings: "tnum";
+    transition: color 0.25s ease, text-shadow 0.25s ease;
+    min-width: 2.4em; text-align: right;
+  }
+  /* load/buffer states: red (bad/early) → orange (buffering) → green (fully loaded) */
+  .tuner .freq-num.bad     { color: var(--crit); text-shadow: 0 0 8px rgba(244,67,54,0.4); }
+  .tuner .freq-num.buffer  { color: var(--accent); text-shadow: 0 0 8px var(--accent-dim); }
+  .tuner .freq-num.healthy { color: var(--good); text-shadow: 0 0 8px rgba(76,175,80,0.4); }
+  .tuner .freq-num.tuning { color: var(--fg); animation: freq-flicker 0.08s steps(2) infinite; }
+  @keyframes freq-flicker {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
+  .tuner .freq-unit {
+    font-size: 11px; letter-spacing: 2px; color: var(--muted);
+    text-transform: none;   /* preserve case for Kbps / Kb/s / Kb/秒 */
+    font-family: 'Courier New', monospace;
+  }
+  .tuner .signal-row {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: var(--dim);
+  }
+  .tuner .signal-bars {
+    display: flex; gap: 2px; align-items: flex-end; height: 10px;
+  }
+  .tuner .signal-bars span {
+    display: block; width: 3px; background: var(--border); transition: background 0.1s;
+  }
+  .tuner .signal-bars span.on { background: var(--accent); }
+  .tuner .signal-bars span:nth-child(1) { height: 3px; }
+  .tuner .signal-bars span:nth-child(2) { height: 5px; }
+  .tuner .signal-bars span:nth-child(3) { height: 7px; }
+  .tuner .signal-bars span:nth-child(4) { height: 9px; }
+  .tuner .signal-bars span:nth-child(5) { height: 10px; }
+  /* VIBE display (right-aligned, 2-line label+value; hidden when vibe is empty/0) */
+  .tuner .vibe-block {
+    margin-left: auto; text-align: right;
+    line-height: 1.15;
+    font-family: 'Courier New', monospace;
+  }
+  .tuner .vibe-block.hidden { display: none; }
+  .tuner .vibe-label {
+    font-size: 8px; letter-spacing: 2.5px; text-transform: uppercase;
+    color: var(--muted);
+  }
+  .tuner .vibe-value {
+    font-size: 10px; letter-spacing: 1px;
+    color: var(--accent);
+    max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    text-transform: none;   /* preserve authored case */
+  }
+
+  /* transport: play/pause + scan — grid mirrors .quality so both line up */
+  .tuner .transport {
+    display: grid;
+    grid-template-columns: auto auto;
+    grid-template-rows: auto auto;
+    column-gap: 8px; row-gap: 4px;
+    align-items: center;
+    padding: 0;
+  }
+  .tuner .transport .t-spacer {
+    grid-column: 1 / -1;
+    /* mirrors .quality-label's font-size so the button rows are at the same baseline */
+    font-size: 9px; letter-spacing: 2px;
+    visibility: hidden;
+    user-select: none; pointer-events: none;
+  }
+  .tuner .tbtn {
+    font-family: inherit; font-size: 11px; letter-spacing: 2.5px; text-transform: uppercase;
+    background: rgba(0,0,0,0.55); color: var(--fg);
+    border: 1px solid var(--accent); padding: 10px 18px;
+    cursor: pointer; white-space: nowrap;
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.5), 3px 3px 0 var(--accent-dim);
+    transition: all 0.12s;
+    min-width: 78px;
+  }
+  .tuner .tbtn:hover:not(:disabled) {
+    color: var(--accent);
+    transform: translate(-1px, -1px);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.6), 4px 4px 0 var(--accent-dim);
+  }
+  .tuner .tbtn:active:not(:disabled) { transform: translate(0,0); box-shadow: none; }
+  .tuner .tbtn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .tuner .tbtn.scan { min-width: 92px; }
+  .tuner .tbtn.scan.active { background: var(--accent); color: var(--bg); }
+
+  /* center: tuning strip (progress) */
+  .tuner .tuning-strip {
+    display: grid; grid-template-rows: auto 1fr auto; gap: 4px;
+    font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: var(--dim);
+    min-width: 0;
+  }
+  .tuner .tuning-strip .strip-top {
+    display: flex; justify-content: space-between;
+  }
+  .tuner .tuning-strip .strip-top .track-name-cycler {
+    color: var(--accent); letter-spacing: 1.5px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    text-transform: none;   /* preserve "In The Pit" case */
+    transition: opacity 0.2s ease;
+    max-width: 60%;
+  }
+  .tuner .tuning-strip .strip-top .time { color: var(--muted); font-family: 'Courier New', monospace; }
+
+  .tuner .tuning-bar {
+    position: relative; cursor: pointer; height: 26px;
+    display: flex; align-items: center;
+  }
+  .tuner .tuning-bar::before {
+    content: ''; position: absolute; left: 0; right: 0; top: 50%;
+    height: 2px; background: var(--border);
+    transform: translateY(-50%);
+  }
+  .tuner .tuning-ticks {
+    position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%);
+    display: flex; justify-content: space-between; pointer-events: none;
+  }
+  .tuner .tuning-ticks span {
+    display: block; width: 1px; height: 6px; background: var(--dim);
+  }
+  .tuner .tuning-ticks span.major { height: 10px; background: var(--muted); }
+  .tuner .tuning-prog {
+    position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+    height: 2px; background: var(--accent); transition: width 0.1s;
+  }
+  .tuner .tuning-needle {
+    position: absolute; left: 0; top: 0; bottom: 0;
+    width: 2px; background: var(--accent);
+    box-shadow: 0 0 8px var(--accent), 0 0 16px var(--accent-dim);
+    transform: translateX(-50%); transition: left 0.1s;
+    pointer-events: none;
+  }
+  .tuner .tuning-needle::before, .tuner .tuning-needle::after {
+    content: ''; position: absolute; left: 50%; transform: translateX(-50%);
+    width: 8px; height: 8px; background: var(--accent);
+    clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  }
+  .tuner .tuning-needle::before { top: -2px; }
+  .tuner .tuning-needle::after { bottom: -2px; transform: translateX(-50%) rotate(180deg); }
+  .tuner .strip-bot {
+    display: flex; justify-content: space-between; align-items: center;
+    font-family: 'Courier New', monospace;   /* match KBPS / VIBE */
+  }
+  .tuner .strip-bot .readout { display: flex; gap: 6px; align-items: center; }
+  .tuner .strip-bot .readout .v { color: var(--fg); }
+  .tuner .strip-bot .readout .val-accent { color: var(--accent); }
+
+  /* right: quality (NORMAL / HI-FI) — desktop: label on top, 2 buttons below */
+  .tuner .quality {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto;
+    column-gap: 8px; row-gap: 4px;
+    align-items: center;
+  }
+  .tuner .quality .quality-label {
+    grid-column: 1 / -1;
+    text-align: center;
+    font-size: 9px; letter-spacing: 2px; text-transform: uppercase;
+    color: var(--dim);
+  }
+  /* qbtn inherits .tbtn base; filled-accent for the selected quality */
+  .tuner .tbtn.qbtn.active {
+    background: var(--accent);
+    color: var(--bg);
+    box-shadow: 0 4px 14px rgba(0,0,0,0.5), 3px 3px 0 var(--accent-dim);
+  }
+  .tuner .tbtn.qbtn:disabled {
+    opacity: 0.35; cursor: not-allowed;
+    box-shadow: none;
+  }
+
+  /* ── print overlay — timed on-screen messages from signal.dat timeline ── */
+  .print-overlay {
+    position: fixed; inset: 0; z-index: 350;
+    display: flex; align-items: flex-start; justify-content: center;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+  .print-overlay.show { opacity: 1; }
+  .print-overlay .print-box {
+    margin-top: 22vh;    /* upper third — sits above the mid-left track-card */
+    max-width: 82vw;
+    padding: 16px 26px;
+    background: rgba(0,0,0,0.85);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--accent-dim);
+    border-left: 3px solid var(--accent);
+    color: var(--fg);
+    font-size: 18px; letter-spacing: 1px; line-height: 1.4;
+    text-align: center;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.6), 4px 4px 0 var(--accent-dim);
+  }
+  @media (max-width: 520px) {
+    .print-overlay .print-box { font-size: 15px; padding: 12px 18px; max-width: 90vw; margin-top: 15vh; }
+  }
+
+  /* ── toast ── */
+  .toast {
+    position: fixed; top: 54px; left: 50%;
+    transform: translateX(-50%) translateY(-30px);
+    z-index: 300; opacity: 0; pointer-events: none;
+    background: rgba(0,0,0,0.85); color: var(--accent);
+    padding: 8px 16px; font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
+    border: 1px solid var(--accent-dim);
+    transition: opacity 0.25s, transform 0.25s;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* ── loading overlay (while fetching first track) ── */
+  .loading {
+    position: fixed; inset: 0; z-index: 400;
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 12px;
+    background: var(--bg);
+    color: var(--muted);
+    font-size: 11px; letter-spacing: 3px; text-transform: uppercase;
+    transition: opacity 0.5s;
+  }
+  .loading.hidden { opacity: 0; pointer-events: none; }
+  .loading .dots { font-family: 'Courier New', monospace; color: var(--accent); }
+  .loading .status { font-size: 9px; color: var(--dim); letter-spacing: 2px; }
+
+  /* ── prevent right-click/drag on media elements area ── */
+  #viz { pointer-events: auto; }
+
+  /* cycler fade state */
+  .track-name-cycler.fading { opacity: 0.15; }
+
+  /* ── info dialog (access-none + access-granted) ── */
+  .info-overlay {
+    display: none; position: fixed; inset: 0; z-index: 500;
+    background: rgba(0,0,0,0.72); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    align-items: center; justify-content: center; padding: 20px;
+  }
+  .info-overlay.open { display: flex; }
+  .info-panel {
+    position: relative; max-width: 420px; width: 100%;
+    background: rgba(17,17,17,0.95);
+    border: 1px solid var(--accent-dim);
+    border-left: 3px solid var(--accent);
+    padding: 22px 22px 18px;
+    color: var(--fg);
+    box-shadow: 8px 8px 0 var(--accent-dim), 0 20px 60px rgba(0,0,0,0.7);
+  }
+  .info-panel::before, .info-panel::after {
+    content: ''; position: absolute; width: 12px; height: 12px;
+    border: 2px solid var(--accent);
+  }
+  .info-panel::before { top: -1px; left: -1px; border-right: none; border-bottom: none; }
+  .info-panel::after { bottom: -1px; right: -1px; border-left: none; border-top: none; }
+  .info-panel--confirm { max-width: 360px; }
+  .info-title {
+    font-size: 12px; letter-spacing: 3px; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 12px;
+    padding-bottom: 8px; border-bottom: 1px solid var(--border);
+  }
+  .info-body {
+    font-size: 14px; line-height: 1.55; color: var(--fg);
+    margin-bottom: 16px;
+  }
+  .info-body a { color: var(--accent); text-decoration: none; border-bottom: 1px dotted currentColor; }
+  .info-body a:hover { opacity: 0.75; }
+  .info-body .id-line {
+    font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
+    color: var(--muted); margin: 6px 0 4px;
+  }
+  .info-body .track-title {
+    font-size: 16px; letter-spacing: 1px; color: var(--fg);
+    margin-bottom: 8px;
+  }
+  .info-body .msg-body {
+    font-size: 13px; line-height: 1.55;
+    color: var(--fg);
+    margin-bottom: 12px;
+  }
+  .info-body .link-list {
+    display: flex; flex-direction: column; gap: 6px;
+    margin-top: 6px;
+  }
+  .info-body .link-list a {
+    display: block; padding: 6px 10px;
+    border: 1px solid var(--accent-dim); color: var(--fg);
+    font-size: 12px; letter-spacing: 2px; text-transform: uppercase;
+    transition: all 0.15s;
+  }
+  .info-body .link-list a:hover {
+    border-color: var(--accent); color: var(--accent);
+    box-shadow: 3px 3px 0 var(--accent-dim);
+    transform: translate(-1px,-1px);
+  }
+  .info-actions {
+    display: flex; gap: 8px; justify-content: flex-end;
+  }
+  .ibtn {
+    font-family: inherit; font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
+    background: rgba(0,0,0,0.4); color: var(--muted);
+    border: 1px solid var(--border); padding: 8px 14px;
+    cursor: pointer; transition: all 0.12s;
+  }
+  .ibtn:hover { color: var(--fg); border-color: var(--accent-dim); }
+  .ibtn--primary { color: var(--accent); border-color: var(--accent); }
+  .ibtn--primary:hover { background: var(--accent); color: var(--bg); }
+
+  /* ── back-link label variants ── */
+  .back-link {
+    display: inline-flex; align-items: baseline; gap: 0;
+    font-size: 0.6rem; letter-spacing: 2px; color: var(--muted);
+    text-decoration: none; text-transform: uppercase; padding: 5px 8px;
+    transition: opacity 0.2s, color 0.2s;
+    white-space: nowrap;
+  }
+  .back-link:hover { color: var(--fg); opacity: 0.85; }
+
+  /* ── mobile ── */
+  @media (max-width: 860px) {
+    .tuner { grid-template-columns: 1fr; grid-template-rows: auto auto auto auto; height: auto; padding: 10px 12px; gap: 8px; }
+    .tuner .frequency-panel { min-width: 0; }
+    .tuner .transport { justify-content: center; }
+    #viz { height: calc(100% - 260px); }
+    .brand { bottom: 270px; right: 14px; }
+    .brand .title { font-size: 16px; letter-spacing: 4px; }
+    /* card-body: tighter on mobile */
+    .track-card { font-size: 12px; }
+    .card-collapse { font-size: 10px; letter-spacing: 2px; }
+    .card-body { padding: 10px 12px; font-size: 11px; column-gap: 8px; row-gap: 4px; max-width: 72vw; }
+    .card-body .v { max-width: 56vw; }
+  }
+  /* mobile: quality row regains its old slim full-width look + RECALIBRATE SIGNAL label */
+  @media (max-width: 860px) {
+    .tuner .quality {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      column-gap: 6px; row-gap: 4px;
+      align-items: stretch;
+    }
+    .tuner .quality .quality-label {
+      display: block;
+      grid-column: 1 / -1;
+      text-align: center;
+      font-size: 8px; letter-spacing: 2px; text-transform: uppercase;
+      color: var(--dim);
+      margin-top: 2px;
+    }
+    /* slim full-width qbtns — drop the 3D/accent-border chunkiness */
+    .tuner .tbtn.qbtn {
+      min-width: 0;
+      padding: 8px 12px;
+      font-size: 10px;
+      letter-spacing: 1.5px;
+      background: rgba(255,255,255,0.04);
+      color: var(--muted);
+      border: 1px solid rgba(255,255,255,0.1);
+      box-shadow: none;
+    }
+    .tuner .tbtn.qbtn:hover:not(:disabled) {
+      transform: none; box-shadow: none;
+      color: var(--fg); border-color: var(--accent-dim);
+    }
+    .tuner .tbtn.qbtn.active {
+      background: rgba(255,255,255,0.05);
+      color: var(--accent);
+      border-color: var(--accent);
+      box-shadow: none;
+    }
+  }
+  @media (max-width: 520px) {
+    .tuner .tbtn { font-size: 10px; padding: 8px 14px; min-width: 62px; }
+    .tuner .freq-num { font-size: 24px; }
+    .card-body { font-size: 10px; padding: 8px 10px; max-width: 68vw; }
+    .card-body .v { max-width: 50vw; }
+    .card-collapse { width: 26px; padding: 10px 3px; font-size: 9px; }
+    .info-panel { padding: 18px 18px 14px; }
+    .info-title { font-size: 11px; letter-spacing: 2px; }
+    .info-body { font-size: 13px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="viz"></canvas>
+
+<nav class="top-bar">
+  <a href="/" id="back-td" class="back-link" translate="no">
+    <span class="back-arrow">&larr;&nbsp;</span><span class="back-lbl"><!-- filled by JS per lang + viewport --></span>
+  </a>
+  <span class="bar-title" id="barTitle" data-i18n="bar-title">RADIO RECEIVER</span>
+  <div class="bar-spacer"></div>
+  <button class="bar-hamburger" id="bar-hamburger" aria-label="Settings">
+    <span class="hamburger-label" data-i18n="settings">Settings</span>
+    <span class="hamburger-lines"><span></span><span></span><span></span></span>
+  </button>
+  <div class="bar-menu" id="bar-menu">
+    <div class="menu-label" data-i18n="lang-label">Languages</div>
+    <button data-lang-btn="en" class="active">English</button>
+    <button data-lang-btn="de">Deutsch</button>
+    <button data-lang-btn="ja">日本語</button>
+
+    <div class="menu-sep"></div>
+    <div class="menu-label" data-i18n="transparency">Transparency</div>
+    <div class="menu-row">
+      <button data-transparency="on"  class="mrbtn active">ON</button>
+      <button data-transparency="off" class="mrbtn">OFF</button>
+    </div>
+
+    <div class="menu-sep"></div>
+    <div class="menu-label" data-i18n="waves">Waves</div>
+    <div class="menu-row">
+      <button data-waves="full" class="mrbtn active">FULL</button>
+      <button data-waves="75"   class="mrbtn">75%</button>
+      <button data-waves="50"   class="mrbtn">50%</button>
+    </div>
+
+    <!-- footer: subtle TWDU mark + copyright (sys font so © renders cleanly) -->
+    <div class="menu-footer">
+      <img class="menu-logo" src="https://assets.afest.io/afest-elements/twdu-white.png" alt="" onerror="this.style.display='none';">
+      <div class="menu-copy">&copy; 2024&ndash;2025 AFEST.IO</div>
+    </div>
+  </div>
+</nav>
+
+<!-- metadata block (middle-left edge, 2-col label/value + vertical collapse button) -->
+<div class="track-card" id="trackCard">
+  <button class="card-collapse" id="cardCollapse" translate="no" aria-label="Collapse track card">
+    <span class="cc-text" id="ccText">COLLAPSE</span>
+    <span class="cc-arrow" id="ccArrow" aria-hidden="true">&darr;</span>
+  </button>
+  <div class="card-body" id="cardBody">
+    <div class="mrow">
+      <span class="k">Signal:</span>
+      <span class="v" id="m-signal">---</span>
+    </div>
+    <div class="mrow">
+      <span class="k">Decoder:</span>
+      <span class="v" id="m-decoder">---</span>
+    </div>
+    <div class="mrow">
+      <span class="k">Status:</span>
+      <span class="v" id="m-status">---</span>
+    </div>
+    <div class="mrow">
+      <span class="k">Access:</span>
+      <span class="v tap" id="m-access" role="button" tabindex="0" title="Tap for details">---</span>
+    </div>
+    <!-- origin is shown in the cycler above the slider, not here -->
+    <span id="m-origin" hidden>---</span>
+  </div>
+</div>
+
+<!-- ── info dialog (access-none / access-granted both use this shell) ── -->
+<div class="info-overlay" id="infoOverlay" role="dialog" aria-modal="true" aria-labelledby="infoTitle">
+  <div class="info-panel">
+    <div class="info-title" id="infoTitle"></div>
+    <div class="info-body" id="infoBody"></div>
+    <div class="info-actions" id="infoActions"></div>
+  </div>
+</div>
+
+<!-- ── nag-us redirect confirm (nested dialog shown inside info-overlay) ── -->
+<div class="info-overlay" id="confirmOverlay" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+  <div class="info-panel info-panel--confirm">
+    <div class="info-title" id="confirmTitle">OPEN EXTERNAL LINK?</div>
+    <div class="info-body" id="confirmBody">This will open <span id="confirmUrl"></span> in a new tab.</div>
+    <div class="info-actions">
+      <button class="ibtn" id="confirmBack">[ BACK ]</button>
+      <button class="ibtn ibtn--primary" id="confirmGo">[ GO ]</button>
+    </div>
+  </div>
+</div>
+
+<!-- brand -->
+<div class="brand">
+  <div class="title">WSI Radio Receiver</div>
+  <div class="sub"><span data-i18n="constructed-by">Constructed by</span> <a href="https://www.instagram.com/wyred.on/" target="_blank" rel="noopener">@wyred.on</a></div>
+</div>
+
+<!-- hidden <audio> backing element.
+     Fed with a blob URL derived from the fetched arraybuffer, so the real R2
+     URL is never exposed. Lets mobile browsers keep playback alive in the
+     background and gives us lock-screen controls via MediaSession API. -->
+<audio id="audioEl" preload="auto" playsinline style="display:none"></audio>
+
+<!-- toast -->
+<div class="toast" id="toast"></div>
+
+<!-- print overlay (centered, upper-third — fires on timeline 'print' events) -->
+<div class="print-overlay" id="printOverlay" aria-hidden="true">
+  <div class="print-box" id="printBox"></div>
+</div>
+
+<!-- tuner control strip -->
+<div class="tuner">
+  <!-- streaming-rate display (replaces the FM frequency readout) -->
+  <div class="frequency-panel">
+    <div class="freq-row">
+      <span class="freq-num" id="freqNum">---</span>
+      <span class="freq-unit" id="freqUnit">kbps</span>
+    </div>
+    <div class="signal-row">
+      <div class="signal-bars" id="signalBars">
+        <span></span><span></span><span></span><span></span><span></span>
+      </div>
+      <div class="vibe-block hidden" id="vibeBlock" translate="no">
+        <div class="vibe-label">VIBE</div>
+        <div class="vibe-value" id="vibeValue"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- tuning strip: track name + progress + BPM/KEY -->
+  <div class="tuning-strip">
+    <div class="strip-top">
+      <div class="track-name-cycler" id="trackNameCycler">--</div>
+      <div class="time" id="trackTime">0:00 / 0:00</div>
+    </div>
+    <div class="tuning-bar" id="tuningBar">
+      <div class="tuning-ticks" id="tuningTicks"></div>
+      <div class="tuning-prog" id="tuningProg"></div>
+      <div class="tuning-needle" id="tuningNeedle"></div>
+    </div>
+    <div class="strip-bot">
+      <div class="readout"><span data-i18n="bpm">BPM</span><span class="v val-accent" id="bpmVal">---</span></div>
+      <div class="readout"><span data-i18n="key">KEY</span><span class="v val-accent" id="keyVal">---</span></div>
+      <div class="readout"><span>dB</span><span class="v" id="dbReadout">---</span></div>
+    </div>
+  </div>
+
+  <!-- transport buttons -->
+  <div class="transport">
+    <!-- invisible spacer tile so SCAN/PLAY line up with NORMAL/HI-FI (which have the RECALIBRATE SIGNAL label above) -->
+    <div class="t-spacer" aria-hidden="true">&nbsp;</div>
+    <button class="tbtn scan" id="btnScan" data-i18n="scan">SCAN</button>
+    <button class="tbtn" id="btnPlay" data-i18n="play">PLAY</button>
+  </div>
+
+  <!-- right: recalibrate signal (desktop: matches SCAN/PLAY; mobile: slim full-width with label) -->
+  <div class="quality">
+    <div class="quality-label" data-i18n="recalibrate">RECALIBRATE SIGNAL</div>
+    <button class="tbtn qbtn active" data-quality="normal" id="qbtnNormal" data-i18n="q-normal" title="Recalibrate signal to NORMAL">NORMAL</button>
+    <button class="tbtn qbtn"        data-quality="highfi" id="qbtnHighfi" data-i18n="q-highfi" title="Recalibrate signal to HI-FI">HI-FI</button>
+  </div>
+</div>
+
+<!-- loading -->
+<div class="loading" id="loading">
+  <div><span data-i18n="tuning-in">TUNING IN</span><span class="dots" id="loadDots">...</span></div>
+  <div class="status" id="loadStatus">CONTACTING TRANSMITTER</div>
+</div>
+
+<script>
+'use strict';
+
+// ══════════════════════════════════════════════════════════════════
+// CONFIG
+// ══════════════════════════════════════════════════════════════════
+const CFG = {
+  fftSize: 2048,
+  smoothing: 0.82,
+  terrainLines: 113,
+  freqSamples: 160,
+  heightScale: 3.8,
+  pushEvery: 3,
+  perspective: '90',
+  isoOffsetX: 4,
+  isoOffsetY: 3.4,
+  lineWidth: 0.6,
+  opacityFront: 0.95,
+  opacityBack: 0.15,
+  _posX: 8, _posY: 91, _width: 66,
+  bpmUpdateInterval: 180,
+  keyUpdateInterval: 200,
+};
+
+// Signal/audio source tiers (tried in order until one works).
+//   1. ONLINE — Cloudflare R2 via assets.afest.io/twysted/radio/
+//               signal:   cf-signal.dat   (at root)
+//               audios:   tracks/         (MP3 + WAV — full quality)
+//   2. LOCAL  — repo-local mirror of the R2 layout (same filenames, full quality)
+//               signal:   ./cf-signal.dat
+//               audios:   ./tracks/       (populated for local dev; NOT pushed to GH)
+//   3. CFDED  — repo-local "Cloud Flare Dead" emergency fallback (obfuscated, low-quality)
+//               signal:   ./cfded/gh-signal.dat
+//               audios:   ./cfded/        (offline_file + *-off.mp3's sit here)
+//
+// Only the CFDED tier is marked `offline:true` — it triggers metadata obfuscation,
+// hi-fi disable, and the `offline_file` audio lookup. The ONLINE and LOCAL tiers
+// share the R2 layout and behave identically to each other.
+const SOURCES = [
+  { id: 'online', audioBase: 'https://assets.afest.io/twysted/radio/tracks/', signal: 'https://assets.afest.io/twysted/radio/cf-signal.dat', offline: false },
+  { id: 'local',  audioBase: './tracks/',                                     signal: './cf-signal.dat',                                     offline: false },
+  { id: 'cfded',  audioBase: './cfded/',                                      signal: './cfded/gh-signal.dat',                               offline: true  },
+];
+
+// ══════════════════════════════════════════════════════════════════
+// I18N
+// ══════════════════════════════════════════════════════════════════
+const I18N = {
+  en: {
+    'bar-title': 'RADIO RECEIVER',
+    'settings': 'Settings',
+    'lang-label': 'Languages',
+    'transparency': 'Transparency',
+    'waves': 'Waves',
+    'press-scan': '(press SCAN)',
+    'unit-kbps': 'Kbps',
+    'unit-signal': 'signal',
+    'dlg-title-granted': 'TRACK RELEASED',
+    'dlg-title-check':   'TRACK \u00B7 CHECK IT OUT',
+    'dlg-title-none':    'TRACK NOT YET RELEASED',
+    'dlg-msg-granted':   'This track is released!',
+    'dlg-msg-check':     'Check this one out.',
+    'dlg-msg-none':      'This track is not yet released.',
+    'dlg-id':            'ID:',
+    'dlg-message':       'MESSAGE:',
+    'dlg-listen':        'LISTEN ON:',
+    'dlg-no-links':      '(no links on file yet)',
+    'dlg-close':         '[ CLOSE ]',
+    'dlg-nag-intro':     'You can',
+    'dlg-nag-link':      'nag us',
+    'dlg-nag-outro':     'on Instagram.',
+    'm-signal': 'SIGNAL',
+    'm-decoder': 'DECODER',
+    'm-status': 'STATUS',
+    'm-access': 'ACCESS',
+    'm-origin': 'ORIGIN',
+    'constructed-by': 'Constructed by',
+    'signal-label': 'SIGNAL',
+    'bpm': 'BPM',
+    'key': 'KEY',
+    'freq-label': 'FREQ',
+    'scan': 'SCAN',
+    'play': 'PLAY',
+    'pause': 'PAUSE',
+    'recalibrate': 'RECALIBRATE SIGNAL',
+    'q-normal': 'NORMAL',
+    'q-highfi': 'HI-FI',
+    'tuning-in': 'TUNING IN',
+    'contacting': 'CONTACTING TRANSMITTER',
+    'offline-mode': 'FALLBACK · OFFLINE SIGNAL',
+    'on-air': 'ON-AIR',
+    'scanning': 'SCANNING',
+    'no-signal': 'NO SIGNAL FOUND',
+    'failed': 'TRANSMISSION FAILED',
+  },
+  de: {
+    'bar-title': 'FUNKEMPFÄNGER',
+    'settings': 'Einstellungen',
+    'lang-label': 'Sprachen',
+    'transparency': 'Transparenz',
+    'waves': 'Wellen',
+    'press-scan': '(SUCHE dr\u00FCcken)',
+    'unit-kbps': 'Kb/s',
+    'unit-signal': 'Signal',
+    'dlg-title-granted': 'TRACK VER\u00D6FFENTLICHT',
+    'dlg-title-check':   'TRACK \u00B7 H\u00D6R REIN',
+    'dlg-title-none':    'NOCH NICHT VER\u00D6FFENTLICHT',
+    'dlg-msg-granted':   'Dieser Track ist ver\u00F6ffentlicht!',
+    'dlg-msg-check':     'Schau dir das mal an.',
+    'dlg-msg-none':      'Dieser Track ist noch nicht ver\u00F6ffentlicht.',
+    'dlg-id':            'ID:',
+    'dlg-message':       'NACHRICHT:',
+    'dlg-listen':        'ANH\u00D6REN BEI:',
+    'dlg-no-links':      '(noch keine Links hinterlegt)',
+    'dlg-close':         '[ SCHLIESSEN ]',
+    'dlg-nag-intro':     'Du kannst uns auf Instagram',
+    'dlg-nag-link':      'anschreiben',
+    'dlg-nag-outro':     '.',
+    'm-signal': 'SIGNAL',
+    'm-decoder': 'DEKODER',
+    'm-status': 'STATUS',
+    'm-access': 'ZUGANG',
+    'm-origin': 'URSPRUNG',
+    'constructed-by': 'Konstruiert von',
+    'signal-label': 'SIGNAL',
+    'bpm': 'BPM',
+    'key': 'TON',
+    'freq-label': 'FREQ',
+    'scan': 'SUCHE',
+    'play': 'PLAY',
+    'pause': 'PAUSE',
+    'recalibrate': 'SIGNAL NEU KALIBRIEREN',
+    'q-normal': 'NORMAL',
+    'q-highfi': 'HI-FI',
+    'tuning-in': 'EINSTELLEN',
+    'contacting': 'KONTAKTIERE SENDER',
+    'offline-mode': 'NOTBETRIEB · OFFLINE-SIGNAL',
+    'on-air': 'ON-AIR',
+    'scanning': 'SUCHLAUF',
+    'no-signal': 'KEIN SIGNAL',
+    'failed': 'ÜBERTRAGUNG FEHLGESCHLAGEN',
+  },
+  ja: {
+    'bar-title': '受信機',
+    'settings': '設定',
+    'lang-label': '言語',
+    'transparency': '透明',
+    'waves': '波形',
+    'press-scan': '(\u8D70\u67FB\u3092\u62BC\u3059)',
+    'unit-kbps': 'Kb/\u79D2',
+    'unit-signal': '\u4FE1\u53F7',
+    'dlg-title-granted': '\u30EA\u30EA\u30FC\u30B9\u6E08\u307F',               /* リリース済み */
+    'dlg-title-check':   '\u30C1\u30A7\u30C3\u30AF\u3057\u3066\u307F\u3066', /* チェックしてみて */
+    'dlg-title-none':    '\u672A\u767A\u8868',                                 /* 未発表 */
+    'dlg-msg-granted':   '\u3053\u306E\u30C8\u30E9\u30C3\u30AF\u306F\u30EA\u30EA\u30FC\u30B9\u6E08\u307F\u3002',
+    'dlg-msg-check':     '\u3053\u308C\u3092\u30C1\u30A7\u30C3\u30AF\u3057\u3066\u307F\u3066\u3002',
+    'dlg-msg-none':      '\u3053\u306E\u30C8\u30E9\u30C3\u30AF\u306F\u307E\u3060\u672A\u767A\u8868\u3067\u3059\u3002',
+    'dlg-id':            'ID\uFF1A',
+    'dlg-message':       '\u30E1\u30C3\u30BB\u30FC\u30B8\uFF1A',              /* メッセージ： */
+    'dlg-listen':        '\u8074\u304F\uFF1A',                                 /* 聴く： */
+    'dlg-no-links':      '\uFF08\u30EA\u30F3\u30AF\u672A\u767B\u9332\uFF09', /* （リンク未登録） */
+    'dlg-close':         '[ \u9589\u3058\u308B ]',                              /* 閉じる */
+    'dlg-nag-intro':     'Instagram\u3067',
+    'dlg-nag-link':      '\u6587\u53E5',                                       /* 文句 */
+    'dlg-nag-outro':     '\u3092\u304A\u9858\u3044\u3057\u307E\u3059\u3002',
+    'm-signal': '信号',
+    'm-decoder': '発信局',
+    'm-status': '状態',
+    'm-access': '接続',
+    'm-origin': '原曲',
+    'constructed-by': '構築',
+    'signal-label': '信号',
+    'bpm': 'BPM',
+    'key': '調',
+    'freq-label': '周波',
+    'scan': '走査',
+    'play': '再生',
+    'pause': '停止',
+    'recalibrate': '再較正',
+    'q-normal': '標準',
+    'q-highfi': '高音質',
+    'tuning-in': '同調中',
+    'contacting': '送信所接続中',
+    'offline-mode': '緊急回路・オフライン',
+    'on-air': '送信中',
+    'scanning': '走査中',
+    'no-signal': '信号喪失',
+    'failed': '伝送失敗',
+  }
+};
+
+let currentLang = localStorage.getItem('td-radio-lang') || 'en';
+if (!I18N[currentLang]) currentLang = 'en';
+
+function t(k) { return (I18N[currentLang] && I18N[currentLang][k]) || I18N.en[k] || k; }
+
+function applyLang(lang) {
+  currentLang = lang;
+  document.documentElement.lang = lang;
+  localStorage.setItem('td-radio-lang', lang);
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    el.textContent = t(el.dataset.i18n);
+  });
+  document.querySelectorAll('.bar-menu [data-lang-btn]').forEach(b => {
+    b.classList.toggle('active', b.dataset.langBtn === lang);
+  });
+  // play button reflects current state
+  updatePlayBtn();
+}
+
+// ══════════════════════════════════════════════════════════════════
+// SIGNAL (metadata) PARSER
+// ══════════════════════════════════════════════════════════════════
+function parseSignalDat(text) {
+  const blocks = text.split(/={5,}/).map(b => b.trim()).filter(b => b);
+  const tracks = [];
+  for (const block of blocks) {
+    const lines = block.split(/\r?\n/).map(l => l.trim()).filter(l => l);
+    const files = [];
+    const meta = {};
+    const timeline = [];   // [{ time, type, value, duration? }], sorted by time asc
+    for (const line of lines) {
+      if (line.startsWith('#')) continue;                 // comment
+      if (/^File\s*:/i.test(line)) {
+        const f = line.replace(/^File\s*:/i, '').trim();
+        if (f) files.push(f);
+        continue;
+      }
+      const eq = line.indexOf('=');
+      if (eq <= 0) continue;
+      const key = line.slice(0, eq).trim();
+      const value = line.slice(eq + 1).trim();
+      // timed key?  e.g. signal(sec96) or print(sec103)
+      const m = key.match(/^([a-zA-Z_][\w-]*)\(sec(\d+(?:\.\d+)?)\)$/);
+      if (m) {
+        const field = m[1].toLowerCase();
+        const time = parseFloat(m[2]);
+        if (field === 'print') {
+          // value format:  "text" or "text; d=3" / "text; d=3sec"
+          const parts = value.split(/\s*;\s*/);
+          const txt = parts[0];
+          const params = {};
+          for (let i = 1; i < parts.length; i++) {
+            const pEq = parts[i].indexOf('=');
+            if (pEq > 0) params[parts[i].slice(0, pEq).trim().toLowerCase()] = parts[i].slice(pEq + 1).trim();
+          }
+          const dRaw = params.d || '3';
+          const duration = parseFloat(String(dRaw).replace(/sec$/i, '')) || 3;
+          timeline.push({ time, type: 'print', text: txt, duration });
+        } else {
+          timeline.push({ time, type: field, value });
+        }
+      } else {
+        meta[key] = value;
+      }
+    }
+    timeline.sort((a, b) => a.time - b.time);
+    if (files.length || meta.offline_file || timeline.length) {
+      tracks.push({ files, meta, timeline });
+    }
+  }
+  return tracks;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// TRACK REGISTRY + MODE DETECTION
+// ══════════════════════════════════════════════════════════════════
+const Registry = {
+  mode: null,          // 'online' | 'offline'
+  source: null,        // SOURCES entry that succeeded
+  tracks: [],
+  currentIdx: -1,
+  quality: localStorage.getItem('td-radio-quality') || 'normal',  // 'normal' | 'highfi'
+
+  async init() {
+    setLoadStatus('contacting');
+    for (const src of SOURCES) {
+      try {
+        const res = await fetch(src.signal, { cache: 'no-cache' });
+        if (!res.ok) throw new Error(src.id + ' signal ' + res.status);
+        const text = await res.text();
+        const parsed = parseSignalDat(text);
+        if (!parsed.length) throw new Error(src.id + ' signal empty');
+        this.tracks = parsed;
+        this.source = src;
+        this.mode = src.offline ? 'offline' : 'online';
+        console.log('[radio] signal loaded from tier:', src.id, '(' + parsed.length + ' track' + (parsed.length === 1 ? '' : 's') + ')');
+        if (src.offline) toast(t('offline-mode'), 3000);
+        return;
+      } catch (e) {
+        console.warn('[radio] tier failed:', src.id, '—', e.message);
+      }
+    }
+    // all tiers failed
+    this.mode = 'offline';
+    this.source = null;
+    this.tracks = [];
+    console.error('[radio] no signal source reachable');
+  },
+
+  metaFor(idx, key) {
+    const t = this.tracks[idx];
+    if (!t) return '';
+    if (this.mode === 'offline') {
+      return t.meta[key + '_offline'] || t.meta[key] || '';
+    }
+    return t.meta[key] || '';
+  },
+
+  urlFor(idx) {
+    const t = this.tracks[idx];
+    if (!t || !this.source) return null;
+    const base = this.source.audioBase;
+    if (this.mode === 'offline') {
+      const f = t.meta.offline_file;
+      return f ? base + f : null;
+    }
+    // online: pick by quality (WAV for hi-fi, MP3 for normal)
+    const wantWav = this.quality === 'highfi';
+    const match = t.files.find(f => wantWav ? /\.wav$/i.test(f) : /\.mp3$/i.test(f));
+    if (match) return base + match;
+    return t.files[0] ? base + t.files[0] : null;
+  },
+
+  pickRandomIdx() {
+    if (!this.tracks.length) return -1;
+    if (this.tracks.length === 1) return 0;
+    let i = this.currentIdx;
+    while (i === this.currentIdx) {
+      i = Math.floor(Math.random() * this.tracks.length);
+    }
+    return i;
+  }
+};
+
+// ══════════════════════════════════════════════════════════════════
+// AUDIO ENGINE (fetch → decode → BufferSource — no <audio> tag)
+// ══════════════════════════════════════════════════════════════════
+class AudioEngine {
+  constructor() {
+    this.ctx = null;
+    this.analyser = null;
+    this.masterGain = null;
+    this.trackGain = null;
+    this.noiseGain = null;
+    this.mediaEl = null;       // HTMLAudioElement, backs real playback
+    this.mediaSource = null;   // MediaElementAudioSourceNode (created once)
+    this.noiseSource = null;
+    this.blobUrl = null;       // current blob: URL assigned to mediaEl.src
+    this.freqData = null;
+    this.loadCounter = 0;      // increments on each load, used to ignore stale decodes
+  }
+
+  init() {
+    if (this.ctx) return;
+    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    this.analyser = this.ctx.createAnalyser();
+    this.analyser.fftSize = CFG.fftSize;
+    this.analyser.smoothingTimeConstant = CFG.smoothing;
+    this.masterGain = this.ctx.createGain();
+    this.trackGain = this.ctx.createGain();
+    this.noiseGain = this.ctx.createGain();
+    this.trackGain.gain.value = 1;
+    this.noiseGain.gain.value = 0;
+
+    this.trackGain.connect(this.analyser);
+    this.noiseGain.connect(this.analyser);
+    this.analyser.connect(this.masterGain);
+    this.masterGain.connect(this.ctx.destination);
+
+    // Hook the <audio> element into the graph.
+    // MediaElementSource can only be created ONCE per element — we keep it
+    // for the life of the page. Swapping tracks is done via mediaEl.src.
+    this.mediaEl = document.getElementById('audioEl');
+    if (!this.mediaEl) {
+      this.mediaEl = document.createElement('audio');
+      this.mediaEl.id = 'audioEl';
+      this.mediaEl.preload = 'auto';
+      this.mediaEl.playsInline = true;
+      this.mediaEl.style.display = 'none';
+      document.body.appendChild(this.mediaEl);
+    }
+    this.mediaSource = this.ctx.createMediaElementSource(this.mediaEl);
+    this.mediaSource.connect(this.trackGain);
+
+    // natural end → auto-advance (pause + manual stop DON'T fire 'ended')
+    this.mediaEl.addEventListener('ended', () => {
+      if (typeof onTrackFullyPlayed === 'function') onTrackFullyPlayed();
+    });
+    // keep UI in sync if the media element pauses on its own (e.g. lock-screen controls)
+    this.mediaEl.addEventListener('pause',    () => updatePlayBtn());
+    this.mediaEl.addEventListener('play',     () => updatePlayBtn());
+    this.mediaEl.addEventListener('playing',  () => updatePlayBtn());
+
+    this.freqData = new Uint8Array(this.analyser.frequencyBinCount);
+  }
+
+  async resume() {
+    if (this.ctx && this.ctx.state === 'suspended') await this.ctx.resume();
+  }
+
+  async loadUrl(url, onProgress) {
+    this.init();
+    const id = ++this.loadCounter;
+    // Still fetch → buffer ourselves so we can (a) report progress, (b) keep
+    // the actual R2 URL out of <audio>'s src attribute (replaced with a blob:)
+    const res = await fetch(url, { mode: 'cors', credentials: 'omit', cache: 'default' });
+    if (!res.ok) throw new Error('fetch failed: ' + res.status);
+    const total = parseInt(res.headers.get('content-length') || '0', 10);
+    const contentType = res.headers.get('content-type') || 'audio/mpeg';
+    const reader = res.body && res.body.getReader ? res.body.getReader() : null;
+    let blob; let loaded = 0;
+    if (reader) {
+      const chunks = [];
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        loaded += value.length;
+        if (onProgress) onProgress(total ? Math.min(1, loaded / total) : 0, loaded);
+      }
+      blob = new Blob(chunks, { type: contentType });
+    } else {
+      blob = await res.blob();
+      loaded = blob.size;
+      if (onProgress) onProgress(1, loaded);
+    }
+    if (id !== this.loadCounter) return null;  // superseded by later load
+
+    // pause the element before swapping src (iOS quirk: playing element
+    // getting src replaced can throw / glitch)
+    try { this.mediaEl.pause(); } catch (_) {}
+    // revoke any previous blob URL first
+    if (this.blobUrl) { try { URL.revokeObjectURL(this.blobUrl); } catch (_) {} this.blobUrl = null; }
+    this.blobUrl = URL.createObjectURL(blob);
+    this.mediaEl.src = this.blobUrl;
+
+    // wait for metadata (duration becomes available). If the load races
+    // (superseded), the next loadUrl will replace src and reject this.
+    await new Promise((resolve, reject) => {
+      const onMeta = () => { cleanup(); resolve(); };
+      const onErr  = () => { cleanup(); reject(new Error('audio load error')); };
+      const cleanup = () => {
+        this.mediaEl.removeEventListener('loadedmetadata', onMeta);
+        this.mediaEl.removeEventListener('error', onErr);
+      };
+      this.mediaEl.addEventListener('loadedmetadata', onMeta, { once: true });
+      this.mediaEl.addEventListener('error', onErr, { once: true });
+      try { this.mediaEl.load(); } catch (_) {}
+    });
+    if (id !== this.loadCounter) return null;
+    if (onProgress) onProgress(1, loaded);
+    // return shape matches the old AudioBuffer result so callers still compute kbps
+    return { buffer: { duration: this.mediaEl.duration }, bytes: loaded };
+  }
+
+  // kept for API compatibility — equivalent to a pause()
+  stopCurrent() {
+    if (this.mediaEl) { try { this.mediaEl.pause(); } catch (_) {} }
+  }
+
+  _startAt(offset, fadeIn) {
+    if (!this.mediaEl || !this.mediaEl.src) return;
+    try { this.mediaEl.currentTime = Math.max(0, offset || 0); } catch (_) {}
+    this.trackGain.gain.cancelScheduledValues(this.ctx.currentTime);
+    if (fadeIn && fadeIn > 0) {
+      this.trackGain.gain.setValueAtTime(0, this.ctx.currentTime);
+      this.trackGain.gain.linearRampToValueAtTime(1, this.ctx.currentTime + fadeIn);
+    } else {
+      this.trackGain.gain.setValueAtTime(1, this.ctx.currentTime);
+    }
+    this.mediaEl.play().catch(() => {/* user-gesture gating */});
+  }
+
+  async play() {
+    await this.resume();
+    if (!this.mediaEl || !this.mediaEl.src) return;
+    this.trackGain.gain.cancelScheduledValues(this.ctx.currentTime);
+    this.trackGain.gain.setValueAtTime(1, this.ctx.currentTime);
+    try { await this.mediaEl.play(); } catch (_) {}
+  }
+
+  pause() {
+    if (!this.mediaEl) return;
+    try { this.mediaEl.pause(); } catch (_) {}
+  }
+
+  async seek(pct) {
+    if (!this.mediaEl || !this.mediaEl.duration) return;
+    try { this.mediaEl.currentTime = this.mediaEl.duration * Math.max(0, Math.min(1, pct)); } catch (_) {}
+  }
+
+  // crossfade: noise already running — fade it out while bringing track in
+  async crossfadeToTrack(offset, duration) {
+    if (!this.mediaEl || !this.mediaEl.src) return;
+    await this.resume();
+    try { this.mediaEl.currentTime = offset || 0; } catch (_) {}
+    this.trackGain.gain.cancelScheduledValues(this.ctx.currentTime);
+    this.trackGain.gain.setValueAtTime(0, this.ctx.currentTime);
+    this.trackGain.gain.linearRampToValueAtTime(1, this.ctx.currentTime + duration);
+    this.noiseGain.gain.cancelScheduledValues(this.ctx.currentTime);
+    this.noiseGain.gain.linearRampToValueAtTime(0, this.ctx.currentTime + duration);
+    try { await this.mediaEl.play(); } catch (_) {}
+    // stop noise a beat after its fade is done
+    setTimeout(() => this.stopNoise(), (duration + 0.1) * 1000);
+  }
+
+  // ── radio static noise (stays on Web Audio — in-memory, no background-playback concerns) ──
+  startNoise(level) {
+    if (!this.ctx) this.init();
+    this.stopNoise();
+    const sr = this.ctx.sampleRate;
+    const len = Math.floor(sr * 1.5);
+    const buf = this.ctx.createBuffer(2, len, sr);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = buf.getChannelData(ch);
+      let b0=0,b1=0,b2=0;
+      for (let i = 0; i < len; i++) {
+        const white = Math.random() * 2 - 1;
+        b0 = 0.99765*b0 + white*0.0990460;
+        b1 = 0.96300*b1 + white*0.2965164;
+        b2 = 0.57000*b2 + white*1.0526913;
+        d[i] = (b0 + b1 + b2 + white * 0.1848) * 0.18;
+      }
+    }
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+    this.noiseGain.gain.cancelScheduledValues(this.ctx.currentTime);
+    this.noiseGain.gain.setValueAtTime(0, this.ctx.currentTime);
+    this.noiseGain.gain.linearRampToValueAtTime(level || 0.7, this.ctx.currentTime + 0.08);
+    src.connect(this.noiseGain);
+    src.start();
+    this.noiseSource = src;
+  }
+
+  stopNoise() {
+    if (this.noiseSource) {
+      try { this.noiseSource.stop(); this.noiseSource.disconnect(); } catch (_) {}
+      this.noiseSource = null;
+    }
+    if (this.noiseGain) {
+      this.noiseGain.gain.cancelScheduledValues(this.ctx.currentTime);
+      this.noiseGain.gain.setValueAtTime(0, this.ctx.currentTime);
+    }
+  }
+
+  getFrequency() {
+    if (!this.analyser || !this.freqData) return null;
+    this.analyser.getByteFrequencyData(this.freqData);
+    return this.freqData;
+  }
+
+  // truthy when a track is loaded — keeps legacy `if (!engine.buffer)` checks working
+  get buffer()      { return this.mediaEl && this.mediaEl.src ? this.mediaEl : null; }
+  get currentTime() { return this.mediaEl ? (this.mediaEl.currentTime || 0) : 0; }
+  get duration()    { return this.mediaEl ? (this.mediaEl.duration    || 0) : 0; }
+  get playing()     { return this.mediaEl ? !this.mediaEl.paused : false; }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// TERRAIN RENDERER (unchanged from WSI Player)
+// ══════════════════════════════════════════════════════════════════
+class TerrainRenderer {
+  constructor(canvas) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d');
+    this.buffer = new Float32Array(CFG.terrainLines * CFG.freqSamples);
+    this.beatFlags = new Uint8Array(CFG.terrainLines);
+    this.head = 0;
+    this.frameCount = 0;
+  }
+  resize() {
+    const dpr = window.devicePixelRatio || 1;
+    this.canvas.width = this.canvas.clientWidth * dpr;
+    this.canvas.height = this.canvas.clientHeight * dpr;
+    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    this.ctx.scale(dpr, dpr);
+    this.w = this.canvas.clientWidth;
+    this.h = this.canvas.clientHeight;
+  }
+  pushFrequency(freqData, beatFlag) {
+    if (!freqData) return;
+    this.frameCount++;
+    if (this.frameCount % CFG.pushEvery !== 0) return;
+    const bins = freqData.length;
+    const offset = this.head * CFG.freqSamples;
+    const spp = Math.floor(bins / CFG.freqSamples);
+    for (let i = 0; i < CFG.freqSamples; i++) {
+      let sum = 0;
+      for (let j = 0; j < spp; j++) sum += freqData[i * spp + j];
+      this.buffer[offset + i] = (sum / spp) / 255;
+    }
+    const bf = beatFlag || 0;
+    this.beatFlags[this.head] = bf;
+    if (bf > 0) {
+      for (let k = 1; k < 10; k++) this.beatFlags[(this.head + k) % CFG.terrainLines] = bf;
+    }
+    this.head = (this.head + 1) % CFG.terrainLines;
+  }
+  render(lineColor, fillColor, accentColor) {
+    const ctx = this.ctx;
+    const w = this.w, h = this.h;
+    ctx.clearRect(0, 0, w, h);
+
+    const totalWidth = w * (CFG._width / 100);
+    const n = CFG.terrainLines;
+    const pts = CFG.freqSamples;
+    const pointSpacing = totalWidth / pts;
+    const hScale = h * 0.0025 * CFG.heightScale;
+
+    const frontX = w * (CFG._posX / 100);
+    const frontY = h * (CFG._posY / 100);
+
+    if (!this._vx || this._vx.length !== n * pts) {
+      this._vx = new Float32Array(n * pts);
+      this._vy = new Float32Array(n * pts);
+    }
+    const vx = this._vx, vy = this._vy;
+
+    for (let i = 0; i < n; i++) {
+      const bufIdx = (this.head + i) % n;
+      const backness = n - 1 - i;
+      const xStart = frontX + backness * CFG.isoOffsetX;
+      const yBase = frontY - backness * CFG.isoOffsetY;
+      for (let j = 0; j < pts; j++) {
+        const amp = this.buffer[bufIdx * pts + j];
+        vx[i * pts + j] = xStart + j * pointSpacing;
+        vy[i * pts + j] = yBase - amp * amp * hScale * 100;
+      }
+    }
+
+    for (let i = 0; i < n; i++) {
+      const bufIdx = (this.head + i) % n;
+      const depth = i / n;
+      const backness = n - 1 - i;
+      const flag = this.beatFlags[bufIdx];
+      const xStart = frontX + backness * CFG.isoOffsetX;
+      const yBase = frontY - backness * CFG.isoOffsetY;
+      const alpha = CFG.opacityBack + (CFG.opacityFront - CFG.opacityBack) * depth;
+
+      ctx.beginPath();
+      ctx.moveTo(xStart, yBase);
+      for (let j = 0; j < pts; j++) ctx.lineTo(vx[i * pts + j], vy[i * pts + j]);
+      ctx.lineTo(xStart + totalWidth, yBase);
+      ctx.closePath();
+      ctx.fillStyle = fillColor;
+      ctx.fill();
+
+      const color = flag === 2 ? accentColor : lineColor;
+      const lineAlpha = flag === 2 ? Math.min(alpha * 2.5, 1) : flag === 1 ? Math.min(alpha * 1.4, 1) : alpha;
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = lineAlpha;
+      ctx.lineWidth = flag === 2 ? CFG.lineWidth * 1.8 : CFG.lineWidth;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// BPM DETECTOR (unchanged)
+// ══════════════════════════════════════════════════════════════════
+class BPMDetector {
+  constructor() {
+    this.onsetBuffer = new Float32Array(300);
+    this.onsetHead = 0;
+    this.prevSpectrum = null;
+    this.bpm = 0;
+    this.frameCount = 0;
+    this._lastBeatNum = -1;
+  }
+  process(freqData) {
+    if (!freqData) return;
+    this.frameCount++;
+    const len = Math.min(freqData.length, 512);
+    if (!this.prevSpectrum) {
+      this.prevSpectrum = new Float32Array(len);
+      for (let i = 0; i < len; i++) this.prevSpectrum[i] = freqData[i];
+      return;
+    }
+    let flux = 0;
+    for (let i = 0; i < len; i++) {
+      const diff = freqData[i] - this.prevSpectrum[i];
+      if (diff > 0) flux += diff;
+      this.prevSpectrum[i] = freqData[i];
+    }
+    this.onsetBuffer[this.onsetHead] = flux;
+    this.onsetHead = (this.onsetHead + 1) % this.onsetBuffer.length;
+    if (this.frameCount % CFG.bpmUpdateInterval === 0 && this.frameCount > 150) this._calcBPM();
+  }
+  getBeatFlag(currentTime) {
+    if (this.bpm <= 0 || !currentTime) return 0;
+    const beatInterval = 60 / this.bpm;
+    const beatNum = Math.floor(currentTime / beatInterval);
+    if (beatNum === this._lastBeatNum) return 0;
+    this._lastBeatNum = beatNum;
+    return (beatNum % 4 === 0) ? 2 : 1;
+  }
+  _calcBPM() {
+    const buf = this.onsetBuffer;
+    const n = buf.length;
+    const fps = 30;
+    const minLag = Math.floor(60 / 200 * fps);
+    const maxLag = Math.floor(60 / 60 * fps);
+    let bestLag = minLag;
+    let bestR = -Infinity;
+    for (let lag = minLag; lag <= maxLag; lag++) {
+      let r = 0;
+      for (let i = 0; i < n; i++) r += buf[i] * buf[(i + lag) % n];
+      if (r > bestR) { bestR = r; bestLag = lag; }
+    }
+    let newBpm = Math.round(60 / (bestLag / fps));
+    if (newBpm < 80 && newBpm * 2 <= 200) newBpm *= 2;
+    if (this.bpm === 0 || Math.abs(newBpm - this.bpm) / this.bpm < 0.08) {
+      this.bpm = newBpm;
+    } else {
+      if (!this._pendingBpm) this._pendingBpm = 0;
+      if (!this._pendingCount) this._pendingCount = 0;
+      if (Math.abs(newBpm - this._pendingBpm) / (this._pendingBpm || 1) < 0.08) {
+        this._pendingCount++;
+        if (this._pendingCount >= 3) { this.bpm = newBpm; this._pendingCount = 0; }
+      } else { this._pendingBpm = newBpm; this._pendingCount = 1; }
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// KEY DETECTOR (unchanged)
+// ══════════════════════════════════════════════════════════════════
+class KeyDetector {
+  constructor(sampleRate) {
+    this.sampleRate = sampleRate || 44100;
+    this.chroma = new Float32Array(12);
+    this.frameCount = 0;
+    this.key = '';
+    this.noteNames = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+    this.majorProfile = [6.35,2.23,3.48,2.33,4.38,4.09,2.52,5.19,2.39,3.66,2.29,2.88];
+    this.minorProfile = [6.33,2.68,3.52,5.38,2.60,3.53,2.54,4.75,3.98,2.69,3.34,3.17];
+  }
+  process(freqData, fftSize) {
+    if (!freqData) return;
+    this.frameCount++;
+    const binHz = this.sampleRate / fftSize;
+    for (let i = 1; i < freqData.length; i++) {
+      const freq = i * binHz;
+      if (freq < 60 || freq > 4200) continue;
+      const noteNum = 12 * Math.log2(freq / 440) + 69;
+      const pc = ((Math.round(noteNum) % 12) + 12) % 12;
+      this.chroma[pc] += freqData[i] / 255;
+    }
+    if (this.frameCount % CFG.keyUpdateInterval === 0 && this.frameCount > 100) this._detectKey();
+  }
+  _detectKey() {
+    let bestCorr = -Infinity, bestKey = '';
+    for (let shift = 0; shift < 12; shift++) {
+      let corrMaj = 0, corrMin = 0;
+      for (let i = 0; i < 12; i++) {
+        const c = this.chroma[(i + shift) % 12];
+        corrMaj += c * this.majorProfile[i];
+        corrMin += c * this.minorProfile[i];
+      }
+      if (corrMaj > bestCorr) { bestCorr = corrMaj; bestKey = this.noteNames[shift]; }
+      if (corrMin > bestCorr) { bestCorr = corrMin; bestKey = this.noteNames[shift] + 'm'; }
+    }
+    this.key = bestKey;
+  }
+  reset() { this.chroma.fill(0); this.frameCount = 0; this.key = ''; }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// MAIN
+// ══════════════════════════════════════════════════════════════════
+const engine = new AudioEngine();
+const canvas = document.getElementById('viz');
+const terrain = new TerrainRenderer(canvas);
+let bpmDetector = new BPMDetector();
+let keyDetector = null;
+
+const $ = id => document.getElementById(id);
+const btnPlay = $('btnPlay'), btnScan = $('btnScan');
+const tuningBar = $('tuningBar'), tuningProg = $('tuningProg'), tuningNeedle = $('tuningNeedle');
+const trackNameCycler = $('trackNameCycler'), trackTime = $('trackTime');
+const freqNum = $('freqNum'), freqUnit = $('freqUnit'), dbReadout = $('dbReadout');
+const bpmVal = $('bpmVal'), keyVal = $('keyVal');
+const signalBars = $('signalBars');
+const vibeBlock = $('vibeBlock'), vibeValue = $('vibeValue');
+const loadingEl = $('loading'), loadStatus = $('loadStatus');
+const qbtnNormal = $('qbtnNormal'), qbtnHighfi = $('qbtnHighfi');
+const toastEl = $('toast');
+const mAccess = $('m-access');
+const infoOverlay = $('infoOverlay'), infoTitleEl = $('infoTitle'), infoBodyEl = $('infoBody'), infoActionsEl = $('infoActions');
+const confirmOverlay = $('confirmOverlay'), confirmUrlEl = $('confirmUrl'), confirmBackBtn = $('confirmBack'), confirmGoBtn = $('confirmGo');
+
+function setLoadStatus(key) { loadStatus.textContent = t(key); }
+function hideLoading() { loadingEl.classList.add('hidden'); setTimeout(() => loadingEl.style.display = 'none', 600); }
+
+let _toastTimer = null;
+function toast(msg, dur) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  if (_toastTimer) clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => toastEl.classList.remove('show'), dur || 1800);
+}
+
+function fmt(sec) {
+  if (!isFinite(sec) || sec < 0) sec = 0;
+  const m = Math.floor(sec / 60), s = Math.floor(sec % 60);
+  return m + ':' + s.toString().padStart(2, '0');
+}
+
+function updatePlayBtn() {
+  const btn = btnPlay;
+  btn.textContent = engine.playing ? t('pause') : t('play');
+}
+
+// ── streaming-rate display (replaces FM frequency) ──
+// States: idle (---), fetching (% loaded in red→orange), loaded+playing (kbps green).
+// Bad = error/stall, stays red.
+const StreamRate = {
+  state: 'idle',       // 'idle' | 'fetching' | 'loaded' | 'bad'
+  pct: 0,
+  bitrateKbps: 0,
+  render() {
+    // clear color classes
+    freqNum.classList.remove('bad', 'buffer', 'healthy', 'tuning');
+    if (this.state === 'idle') {
+      freqNum.textContent = '---';
+      freqUnit.textContent = t('unit-kbps');
+      return;
+    }
+    if (this.state === 'bad') {
+      freqNum.textContent = '!';
+      freqUnit.textContent = t('unit-signal');
+      freqNum.classList.add('bad');
+      return;
+    }
+    if (this.state === 'fetching') {
+      const p = Math.round(this.pct * 100);
+      freqNum.textContent = p;
+      freqUnit.textContent = '%';
+      freqNum.classList.add(p < 50 ? 'bad' : 'buffer');
+      return;
+    }
+    if (this.state === 'loaded') {
+      freqNum.textContent = this.bitrateKbps ? String(this.bitrateKbps) : '---';
+      freqUnit.textContent = t('unit-kbps');
+      freqNum.classList.add('healthy');
+    }
+  },
+  idle()    { this.state='idle'; this.pct=0; this.render(); },
+  fetching(pct) { this.state='fetching'; this.pct=pct; this.render(); },
+  loaded(kbps)  { this.state='loaded'; this.bitrateKbps=kbps; this.render(); },
+  bad()     { this.state='bad'; this.render(); },
+};
+StreamRate.idle();
+
+// ── track-name cycler above slider ──
+//   state 'track'  → "TRACK: signal | decoder"
+//   state 'origin' → "ORIGIN: origin"
+// (labels stay English — this is technical/chrome text.)
+const TrackCycler = {
+  state: 'track',
+  timer: null,
+  idx: -1,
+  start(idx) {
+    this.idx = idx;
+    this.state = 'track';
+    this.paint();
+    this.restartTimer();
+  },
+  restartTimer() {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = setInterval(() => {
+      this.state = this.state === 'track' ? 'origin' : 'track';
+      this.fadeAndPaint();
+    }, 4200);
+  },
+  fadeAndPaint() {
+    trackNameCycler.classList.add('fading');
+    setTimeout(() => { this.paint(); trackNameCycler.classList.remove('fading'); }, 200);
+  },
+  paint() {
+    if (this.idx < 0) { trackNameCycler.textContent = '--'; return; }
+    // liveMeta() returns the timeline-override value if any event has fired;
+    // localizeBrands() swaps TD / RE/IMAGINED to the active lang where applicable
+    if (this.state === 'origin') {
+      const origin = liveMeta(this.idx, 'origin') || '---';
+      trackNameCycler.textContent = localizeBrands('ORIGIN: ' + origin);
+    } else {
+      const sig = liveMeta(this.idx, 'signal') || '---';
+      const dec = liveMeta(this.idx, 'decoder') || '---';
+      trackNameCycler.textContent = localizeBrands('TRACK: ' + sig + ' | ' + dec);
+    }
+  }
+};
+
+function renderTicks() {
+  const el = $('tuningTicks');
+  el.innerHTML = '';
+  for (let i = 0; i <= 40; i++) {
+    const s = document.createElement('span');
+    if (i % 5 === 0) s.className = 'major';
+    el.appendChild(s);
+  }
+}
+renderTicks();
+
+// ── tuning bar click to seek ──
+tuningBar.addEventListener('click', e => {
+  if (!engine.buffer) return;
+  const rect = tuningBar.getBoundingClientRect();
+  const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  engine.seek(pct);
+  // re-apply/skip timeline events for the new position (no replay of old prints)
+  if (Registry.currentIdx >= 0) {
+    // hydrate overrides up to the new time, without flashing past print events
+    // (applyMeta resets LiveState, then catchUpTo applies all non-print events ≤ newTime)
+    // We only partially reset — keep currentIdx bindings but re-walk timeline.
+    applyMeta(Registry.currentIdx);
+  }
+});
+
+// ── hamburger menu ──
+const hamBtn = $('bar-hamburger'), barMenu = $('bar-menu');
+hamBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  barMenu.classList.toggle('open');
+});
+document.addEventListener('click', e => {
+  if (!barMenu.contains(e.target) && !hamBtn.contains(e.target)) barMenu.classList.remove('open');
+});
+document.querySelectorAll('.bar-menu [data-lang-btn]').forEach(b => {
+  b.addEventListener('click', () => {
+    applyLang(b.dataset.langBtn);
+    barMenu.classList.remove('open');
+  });
+});
+
+// ── play/pause (lazy-loads on first click since we defer fetch until user gesture) ──
+btnPlay.addEventListener('click', async () => {
+  engine.init();
+  await engine.resume();
+  if (!engine.buffer) {
+    if (Registry.currentIdx < 0 && Registry.tracks.length) {
+      Registry.currentIdx = Registry.pickRandomIdx();
+      applyMeta(Registry.currentIdx);
+    }
+    if (Registry.currentIdx >= 0) await loadTrack(Registry.currentIdx, { autoplay: true });
+    updatePlayBtn();
+    return;
+  }
+  if (engine.playing) engine.pause();
+  else await engine.play();
+  updatePlayBtn();
+});
+
+// ── quality toggle ──
+function setQuality(q) {
+  if (q !== 'normal' && q !== 'highfi') q = 'normal';
+  Registry.quality = q;
+  localStorage.setItem('td-radio-quality', q);
+  qbtnNormal.classList.toggle('active', q === 'normal');
+  qbtnHighfi.classList.toggle('active', q === 'highfi');
+}
+qbtnNormal.addEventListener('click', async () => {
+  if (Registry.quality === 'normal') return;
+  setQuality('normal');
+  if (Registry.currentIdx >= 0) await reloadCurrent();
+});
+qbtnHighfi.addEventListener('click', async () => {
+  if (Registry.quality === 'highfi') return;
+  setQuality('highfi');
+  if (Registry.currentIdx >= 0) await reloadCurrent();
+});
+setQuality(Registry.quality);
+
+// ══════════════════════════════════════════════════════════════════
+// LIVE STATE + TIMELINE RUNNER
+// ──────────────────────────────────────────────────────────────────
+// A track's metadata can mutate over playback via timeline events from
+// signal.dat (FIELD(secN)=value). LiveState holds those overrides; once
+// a timeline event fires its value wins over the base metaFor() lookup.
+// Reset on every track load / crossfade.
+// ══════════════════════════════════════════════════════════════════
+const LiveState = {
+  overrides: Object.create(null),   // { signal: '...', origin: '...', ... }
+  reset() { this.overrides = Object.create(null); },
+  set(field, value) { this.overrides[field] = value; },
+  get(field) { return this.overrides[field]; }
+};
+
+// unified metadata reader — timeline override wins over base
+function liveMeta(idx, key) {
+  const override = LiveState.get(key);
+  if (override != null) return override;
+  return Registry.metaFor(idx, key) || '';
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Brand aliases — substring replacements applied at display time only.
+// Applied to anything user-facing containing a brand (decoder / the cycler
+// combined line / origin). Written as regex so it also hits composite
+// values like "TWISTED DUALITY x MADEON x Porter Robinson".
+// ──────────────────────────────────────────────────────────────────
+function localizeBrands(text) {
+  if (!text) return text;
+  const lang = document.documentElement.lang || 'en';
+  if (lang === 'ja') {
+    text = text.replace(/TWISTED\s+DUALITY/g, '\u53CC\u6975\u306E\u87BA\u65CB');     // 双極の螺旋
+    text = text.replace(/RE\/IMAGINED/g, '\u30B5\u30A4\u30B3\u30A6\u30C1\u30AF');      // サイコウチク
+  } else if (lang === 'de') {
+    text = text.replace(/RE\/IMAGINED/g, 'RE/KONSTRUKT');
+    // TWISTED DUALITY intentionally unchanged in DE (user said "others use as-is")
+  }
+  return text;
+}
+
+const TimelineRunner = {
+  idx: -1,
+  nextEventIdx: 0,
+  reset(idx) {
+    this.idx = idx;
+    this.nextEventIdx = 0;
+    LiveState.reset();
+    hidePrintOverlay();
+    // if we're starting mid-track (e.g. after a seek), catch up silently
+    this.catchUpTo(engine.currentTime);
+  },
+  tick(currentTime) {
+    const t = Registry.tracks[this.idx];
+    if (!t || !t.timeline || this.nextEventIdx >= t.timeline.length) return;
+    while (this.nextEventIdx < t.timeline.length && t.timeline[this.nextEventIdx].time <= currentTime) {
+      applyTimelineEvent(t.timeline[this.nextEventIdx]);
+      this.nextEventIdx++;
+    }
+  },
+  catchUpTo(currentTime) {
+    // like tick(), but SKIPS print events (they're one-shot UI; don't flash old ones on seek)
+    const t = Registry.tracks[this.idx];
+    if (!t || !t.timeline) { this.nextEventIdx = 0; return; }
+    this.nextEventIdx = 0;
+    while (this.nextEventIdx < t.timeline.length && t.timeline[this.nextEventIdx].time <= currentTime) {
+      const ev = t.timeline[this.nextEventIdx];
+      if (ev.type !== 'print') applyTimelineEvent(ev);
+      this.nextEventIdx++;
+    }
+  }
+};
+
+function applyTimelineEvent(ev) {
+  if (ev.type === 'print') {
+    showPrintOverlay(ev.text, ev.duration);
+    return;
+  }
+  // metadata mutation — set override + sync the visible DOM / cycler
+  LiveState.set(ev.type, ev.value);
+  switch (ev.type) {
+    case 'signal':  $('m-signal').textContent  = ev.value; break;
+    case 'decoder': $('m-decoder').textContent = localizeBrands(ev.value); break;
+    case 'status':  applyStatusValue(ev.value); break;
+    case 'access':  applyAccessValue(ev.value); break;
+    case 'vibe':    applyVibeValue(ev.value); break;
+    // origin isn't rendered in the card — cycler reads via liveMeta()
+    // so no DOM update needed here.
+  }
+  // refresh cycler in case signal/decoder/origin changed
+  if (typeof TrackCycler !== 'undefined' && TrackCycler.paint) TrackCycler.paint();
+}
+
+// helpers used by both applyMeta() (initial) and applyTimelineEvent() (mutations)
+function applyStatusValue(v) {
+  const el = $('m-status');
+  el.textContent = v;
+  el.classList.remove('status-bad', 'status-good');
+  const lc = String(v).toLowerCase();
+  if (lc === 'noncompiled' || lc === 'unknown' || lc === 'unreleased') el.classList.add('status-bad');
+  else if (lc === 'released' || lc === 'public') el.classList.add('status-good');
+}
+function applyAccessValue(v) {
+  mAccess.textContent = v;
+  mAccess.classList.remove('access-none', 'access-granted', 'access-check', 'tap');
+  const lc = String(v).toLowerCase();
+  if (lc === 'granted')    mAccess.classList.add('access-granted', 'tap');
+  else if (lc === 'check') mAccess.classList.add('access-check', 'tap');
+  else                     mAccess.classList.add('access-none', 'tap');
+}
+function applyVibeValue(v) {
+  const raw = String(v || '').trim();
+  if (!raw || raw === '0') {
+    vibeBlock.classList.add('hidden');
+    vibeValue.textContent = '';
+  } else {
+    vibeBlock.classList.remove('hidden');
+    vibeValue.textContent = raw;
+  }
+}
+
+// print overlay — shown centered-upper for N seconds then fades out
+let _printTimer = null;
+function showPrintOverlay(text, durationSec) {
+  const ov = $('printOverlay'); const box = $('printBox');
+  if (!ov || !box) return;
+  box.textContent = text;
+  ov.classList.add('show');
+  if (_printTimer) clearTimeout(_printTimer);
+  _printTimer = setTimeout(() => ov.classList.remove('show'), Math.max(0.5, durationSec) * 1000);
+}
+function hidePrintOverlay() {
+  const ov = $('printOverlay');
+  if (ov) ov.classList.remove('show');
+  if (_printTimer) { clearTimeout(_printTimer); _printTimer = null; }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// QUALITY BUTTON AVAILABILITY
+// ──────────────────────────────────────────────────────────────────
+// - cfded tier (playing *-off.mp3):  BOTH disabled (only one file exists)
+// - online/local without a .wav:      HI-FI disabled, NORMAL enabled
+// - online/local with both formats:   both enabled
+// ══════════════════════════════════════════════════════════════════
+function updateQualityAvailability() {
+  if (!Registry.source) return;
+  const t = Registry.tracks[Registry.currentIdx];
+  const isOffline = !!Registry.source.offline;
+  if (isOffline) {
+    qbtnNormal.disabled = true;  qbtnNormal.title = 'Emergency fallback — single quality only';
+    qbtnHighfi.disabled = true;  qbtnHighfi.title = 'Emergency fallback — single quality only';
+    return;
+  }
+  const hasNormal = !!(t && t.files && t.files.some(f => /\.mp3$/i.test(f)));
+  const hasHighfi = !!(t && t.files && t.files.some(f => /\.wav$/i.test(f)));
+  qbtnNormal.disabled = !hasNormal;
+  qbtnNormal.title = hasNormal ? 'Recalibrate signal to NORMAL' : 'No NORMAL file available';
+  qbtnHighfi.disabled = !hasHighfi;
+  qbtnHighfi.title = hasHighfi ? 'Recalibrate signal to HI-FI' : 'No HI-FI file for this track';
+}
+
+// ── empty state: no track yet → hide all rows except Signal, show "(press SCAN)" ──
+function applyEmptyCard() {
+  trackCard.classList.add('card-empty');
+  $('m-signal').textContent = t('press-scan');
+  $('m-decoder').textContent = '';
+  $('m-status').textContent = '';
+  mAccess.textContent = '';
+  mAccess.classList.remove('tap', 'access-none', 'access-granted');
+  $('m-origin').textContent = '';
+  vibeBlock.classList.add('hidden');
+  // reset cycler to neutral
+  TrackCycler.idx = -1; TrackCycler.paint();
+  if (TrackCycler.timer) { clearInterval(TrackCycler.timer); TrackCycler.timer = null; }
+}
+
+// ── metadata display ──
+function applyMeta(idx) {
+  // exit empty/collapsed states — a real track is loading
+  trackCard.classList.remove('card-empty', 'collapsed');
+  if (typeof updateCollapseLabel === 'function') updateCollapseLabel();
+  // PLAY becomes usable once a track has been loaded
+  btnPlay.disabled = false;
+
+  // base metadata (timeline events may override later)
+  $('m-signal').textContent  = Registry.metaFor(idx, 'signal')  || '---';
+  $('m-decoder').textContent = localizeBrands(Registry.metaFor(idx, 'decoder') || '---');
+  applyStatusValue(Registry.metaFor(idx, 'status') || '---');
+  applyAccessValue(Registry.metaFor(idx, 'access') || '---');
+  $('m-origin').textContent  = Registry.metaFor(idx, 'origin')  || '---';
+  applyVibeValue(Registry.metaFor(idx, 'vibe'));
+
+  // reset per-track runtime state + catch up timeline to current position
+  TimelineRunner.reset(idx);
+
+  // quality buttons reflect file availability for THIS track
+  updateQualityAvailability();
+
+  // lock-screen / system media controls (mobile background playback)
+  applyMediaSession(idx);
+
+  // cycler reset
+  TrackCycler.start(idx);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// AUTO-ADVANCE — when a track naturally ends, load the next one in order.
+// NOT random (SCAN handles that), NOT repeating (stop at end of list).
+// ══════════════════════════════════════════════════════════════════
+function onTrackFullyPlayed() {
+  updatePlayBtn();
+  const next = Registry.currentIdx + 1;
+  if (next >= 0 && next < Registry.tracks.length) {
+    loadTrack(next, { autoplay: true });
+  }
+  // else: last track — natural stop, nothing more to do
+}
+
+// ══════════════════════════════════════════════════════════════════
+// MEDIASESSION — lock-screen / notification controls + metadata.
+// Works on Chrome Android, Safari iOS, macOS. Lets the user pause
+// from the lock screen and see what's playing.
+// ══════════════════════════════════════════════════════════════════
+function applyMediaSession(idx) {
+  if (!('mediaSession' in navigator)) return;
+  try {
+    // Prefer dedicated WebAudio_* overrides if set in signal.dat — lets the user
+    // give the lock screen a cleaned-up title/artist separate from the visible card
+    // (e.g. card says "Echo Behind (Edit) x ???" but lock screen says "Echo Behind").
+    // Fallback chain:  WebAudio_track  → signal  (localized)
+    //                  WebAudio_artist → decoder (localized)
+    //                  WebAudio_album  → origin
+    const track  = liveMeta(idx, 'WebAudio_track');
+    const artist = liveMeta(idx, 'WebAudio_artist');
+    const album  = liveMeta(idx, 'WebAudio_album');
+    const title  = track  || localizeBrands(liveMeta(idx, 'signal')  || '---');
+    const arts   = artist || localizeBrands(liveMeta(idx, 'decoder') || '');
+    const alb    = album  || liveMeta(idx, 'origin') || '';
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title:  title,
+      artist: arts,
+      album:  alb
+    });
+    navigator.mediaSession.setActionHandler('play',  async () => { await engine.play();  updatePlayBtn(); });
+    navigator.mediaSession.setActionHandler('pause', ()       => { engine.pause();        updatePlayBtn(); });
+    navigator.mediaSession.setActionHandler('nexttrack', () => {
+      const n = Registry.currentIdx + 1;
+      if (n >= 0 && n < Registry.tracks.length) loadTrack(n, { autoplay: true });
+    });
+    navigator.mediaSession.setActionHandler('previoustrack', () => {
+      const p = Registry.currentIdx - 1;
+      if (p >= 0) loadTrack(p, { autoplay: true });
+    });
+    try {
+      navigator.mediaSession.setActionHandler('seekto', (e) => {
+        if (engine.duration > 0 && e.seekTime != null) engine.seek(e.seekTime / engine.duration);
+      });
+    } catch (_) { /* older browsers: ignore */ }
+  } catch (_) { /* ignore — best-effort */ }
+}
+
+async function reloadCurrent() {
+  if (Registry.currentIdx < 0) return;
+  const url = Registry.urlFor(Registry.currentIdx);
+  if (!url) return;
+  const wasPlaying = engine.playing;
+  const offset = engine.currentTime;
+  StreamRate.fetching(0);
+  try {
+    const res = await engine.loadUrl(url, p => StreamRate.fetching(p));
+    if (res && res.buffer) {
+      const kbps = res.buffer.duration > 0 ? Math.round((res.bytes * 8) / (res.buffer.duration * 1000)) : 0;
+      StreamRate.loaded(kbps);
+    }
+    if (wasPlaying) engine._startAt(Math.min(offset, engine.duration - 0.1), 0);
+    updatePlayBtn();
+    // rebuild LiveState + timeline cursor for the current offset (no print replay)
+    TimelineRunner.reset(Registry.currentIdx);
+  } catch (e) { toast(t('failed')); StreamRate.bad(); }
+}
+
+async function loadTrack(idx, options) {
+  options = options || {};
+  const url = Registry.urlFor(idx);
+  if (!url) { toast(t('no-signal')); StreamRate.bad(); return false; }
+  // reveal metadata immediately on user gesture, before the fetch
+  // (no need to wait — the user clicked, so they want to see what's loading)
+  Registry.currentIdx = idx;
+  applyMeta(idx);
+  StreamRate.fetching(0);
+  try {
+    const res = await engine.loadUrl(url, p => StreamRate.fetching(p));
+    // fresh analyzers for new track
+    bpmDetector = new BPMDetector();
+    keyDetector = new KeyDetector(engine.ctx ? engine.ctx.sampleRate : 44100);
+    if (options.autoplay) {
+      await engine.play();
+    }
+    updatePlayBtn();
+    if (res && res.buffer) {
+      const kbps = res.buffer.duration > 0 ? Math.round((res.bytes * 8) / (res.buffer.duration * 1000)) : 0;
+      StreamRate.loaded(kbps);
+    }
+    return true;
+  } catch (e) {
+    toast(t('failed'));
+    StreamRate.bad();
+    return false;
+  }
+}
+
+// ── SCAN: noise → crossfade to next random track ──
+let _scanInFlight = false;
+btnScan.addEventListener('click', async () => {
+  if (_scanInFlight) return;
+  if (!Registry.tracks.length) { toast(t('no-signal')); return; }
+  _scanInFlight = true;
+  btnScan.classList.add('active');
+
+  // pick random (not current)
+  const nextIdx = Registry.pickRandomIdx();
+
+  // cue up static noise
+  engine.init();
+  await engine.resume();
+  engine.startNoise(0.55);
+
+  // streaming-rate goes "fetching" while the next track loads
+  StreamRate.fetching(0);
+  const tuneDur = 900;  // ms minimum noise cover
+  const tuneStart = performance.now();
+
+  // kick fetch/decode in parallel, with progress
+  let decodeOk = false;
+  let loadedBytes = 0, dur = 0;
+  try {
+    const url = Registry.urlFor(nextIdx);
+    if (url) {
+      const res = await engine.loadUrl(url, p => StreamRate.fetching(p));
+      if (res && res.buffer) { loadedBytes = res.bytes || 0; dur = res.buffer.duration; decodeOk = true; }
+    }
+  } catch (e) { decodeOk = false; }
+
+  // ensure at least tuneDur ms of noise before fade
+  const elapsed = performance.now() - tuneStart;
+  if (elapsed < tuneDur) await new Promise(r => setTimeout(r, tuneDur - elapsed));
+
+  if (decodeOk) {
+    Registry.currentIdx = nextIdx;
+    applyMeta(nextIdx);
+    bpmDetector = new BPMDetector();
+    keyDetector = new KeyDetector(engine.ctx.sampleRate);
+    engine.crossfadeToTrack(0, 0.4);
+    updatePlayBtn();
+    const kbps = (dur > 0 && loadedBytes > 0) ? Math.round((loadedBytes * 8) / (dur * 1000)) : 0;
+    StreamRate.loaded(kbps);
+  } else {
+    engine.stopNoise();
+    toast(t('failed'));
+    StreamRate.bad();
+  }
+
+  btnScan.classList.remove('active');
+  _scanInFlight = false;
+});
+
+// ── resize ──
+function onResize() { terrain.resize(); }
+window.addEventListener('resize', onResize);
+onResize();
+
+// ── disable right-click on the canvas + audio area (discouragement only) ──
+document.addEventListener('contextmenu', e => {
+  // allow context menu on links and inputs so users can still right-click a hyperlink
+  const t = e.target;
+  if (t.closest('a') || t.tagName === 'INPUT') return;
+  e.preventDefault();
+});
+// block drag on the canvas (prevents "save image as" flow)
+canvas.addEventListener('dragstart', e => e.preventDefault());
+
+// ── signal bars: audio-level reactive meter ──
+function updateSignalBars(freq) {
+  if (!freq) {
+    signalBars.querySelectorAll('span').forEach(s => s.classList.remove('on'));
+    return;
+  }
+  // RMS of lower 1/3 bins
+  let sum = 0;
+  const n = Math.floor(freq.length / 3);
+  for (let i = 0; i < n; i++) sum += freq[i];
+  const avg = sum / n / 255;
+  const lit = Math.min(5, Math.round(avg * 6));
+  const spans = signalBars.querySelectorAll('span');
+  spans.forEach((s, i) => s.classList.toggle('on', i < lit));
+}
+
+// ══════════════════════════════════════════════════════════════════
+// ANIMATION LOOP
+// ══════════════════════════════════════════════════════════════════
+let _pendingBeat = 0;
+// must be declared BEFORE loop() is first called — the loop calls
+// maybeUpdateMediaPosition() synchronously, which reads _mediaPosT
+let _mediaPosT = 0;
+function maybeUpdateMediaPosition() {
+  const now = performance.now();
+  if (now - _mediaPosT < 500) return;
+  _mediaPosT = now;
+  if (!('mediaSession' in navigator) || !navigator.mediaSession.setPositionState) return;
+  const dur = engine.duration;
+  if (!dur || !isFinite(dur)) return;
+  try {
+    navigator.mediaSession.setPositionState({
+      duration: dur,
+      playbackRate: 1,
+      position: Math.min(dur, Math.max(0, engine.currentTime))
+    });
+    navigator.mediaSession.playbackState = engine.playing ? 'playing' : 'paused';
+  } catch (_) { /* some browsers throw on certain values — safe to ignore */ }
+}
+function loop() {
+  requestAnimationFrame(loop);
+  const freq = engine.getFrequency();
+  if (freq && engine.playing) {
+    bpmDetector.process(freq);
+    const b = bpmDetector.getBeatFlag(engine.currentTime);
+    if (b > _pendingBeat) _pendingBeat = b;
+    if (keyDetector) keyDetector.process(freq, CFG.fftSize);
+  }
+  terrain.pushFrequency(freq, _pendingBeat);
+  if (terrain.frameCount % CFG.pushEvery === 0) _pendingBeat = 0;
+
+  const lineColor = getComputedStyle(document.documentElement).getPropertyValue('--line-color').trim();
+  const fillColor = getComputedStyle(document.documentElement).getPropertyValue('--fill-color').trim();
+  const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+  terrain.render(lineColor, fillColor, accentColor);
+
+  // UI
+  const cur = engine.currentTime, dur = engine.duration;
+  if (dur > 0) {
+    const pct = cur / dur;
+    tuningProg.style.width = (pct * 100) + '%';
+    tuningNeedle.style.left = (pct * 100) + '%';
+    trackTime.textContent = fmt(cur) + ' / ' + fmt(dur);
+  } else {
+    tuningProg.style.width = '0%';
+    tuningNeedle.style.left = '0%';
+    trackTime.textContent = '0:00 / 0:00';
+  }
+  if (bpmDetector.bpm > 0) bpmVal.textContent = bpmDetector.bpm;
+  if (keyDetector && keyDetector.key) keyVal.textContent = keyDetector.key;
+
+  // fire any timeline events whose time has been crossed this frame
+  if (engine.playing) TimelineRunner.tick(engine.currentTime);
+
+  updateSignalBars(freq);
+  updateDbReadout(freq);
+
+  // update MediaSession position-state ~twice per second (lock-screen scrubber)
+  maybeUpdateMediaPosition();
+}
+loop();
+
+// ── dB RMS readout ──
+// AnalyserNode.getByteFrequencyData maps [minDb..maxDb] → [0..255].
+// We average the byte values and invert the mapping back to dB.
+function updateDbReadout(freq) {
+  if (!freq || !engine.analyser) { dbReadout.textContent = '---'; return; }
+  let sum = 0;
+  for (let i = 0; i < freq.length; i++) sum += freq[i];
+  const avg = sum / freq.length;
+  const minDb = engine.analyser.minDecibels;
+  const maxDb = engine.analyser.maxDecibels;
+  const db = minDb + (avg / 255) * (maxDb - minDb);
+  dbReadout.textContent = Math.round(db);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// BOOT
+// ══════════════════════════════════════════════════════════════════
+(async function boot() {
+  applyLang(currentLang);
+  setLoadStatus('contacting');
+  // dots animation during load
+  const dotsEl = $('loadDots');
+  const dotsTimer = setInterval(() => {
+    const d = dotsEl.textContent;
+    dotsEl.textContent = d.length >= 3 ? '.' : d + '.';
+  }, 300);
+
+  await Registry.init();
+
+  // quality buttons respect tier + per-track file availability
+  // (cfded → both disabled; online/local → HI-FI disabled if no .wav for this track)
+  updateQualityAvailability();
+
+  // (tier indicator removed — streaming-rate colour + VIBE carry the signal story now)
+
+  // Pre-pick a random track, but DON'T reveal its metadata on page load —
+  // the track card stays collapsed + empty until the user hits SCAN (or PLAY
+  // later, once SCAN has loaded something). Audio buffers can still hit the
+  // HTTP cache (cache: 'default' above) so replays start fast.
+  if (Registry.tracks.length) {
+    Registry.currentIdx = Registry.pickRandomIdx();
+  }
+  // start in collapsed + empty state; PLAY gated until the user SCANs
+  trackCard.classList.add('collapsed');
+  applyEmptyCard();
+  btnPlay.disabled = true;
+  if (typeof updateCollapseLabel === 'function') updateCollapseLabel();
+
+  // load track-links.dat from the same tier (non-blocking — dialogs work without it, just with empty links)
+  LinksRegistry.init().catch(() => {/* ok, no links */});
+
+  clearInterval(dotsTimer);
+  hideLoading();
+})();
+
+// ══════════════════════════════════════════════════════════════════
+// LINKS REGISTRY — parses track-links.dat for "access=granted" dialogs
+// ══════════════════════════════════════════════════════════════════
+const LinksRegistry = {
+  map: Object.create(null),   // { id → [{ label, url }] }
+  async init() {
+    if (!Registry.source) return;
+    // Signal source tier uses either a CDN base (audioBase ends in /tracks/) or a
+    // local base. Links live in the tier-root next to the signal.dat, not inside tracks/.
+    // Derive the root URL by replacing the signal filename with 'track-links.dat'.
+    const signalUrl = Registry.source.signal;
+    const linksUrl = signalUrl.replace(/[^/]+$/, 'track-links.dat');
+    try {
+      const res = await fetch(linksUrl, { cache: 'no-cache' });
+      if (!res.ok) return;
+      const text = await res.text();
+      this.parse(text);
+    } catch (_) { /* silently unavailable */ }
+  },
+  parse(text) {
+    const blocks = text.split(/={5,}/).map(b => b.trim()).filter(Boolean);
+    for (const block of blocks) {
+      const lines = block.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      let id = null;
+      let message = null;
+      const links = [];
+      for (const line of lines) {
+        if (line.startsWith('#')) continue;
+        if (/^id\s*=/i.test(line)) {
+          id = line.split('=').slice(1).join('=').trim();
+        } else if (/^message\s*=/i.test(line)) {
+          // message=0 → use default from index.html; message=<text> → override
+          message = line.split('=').slice(1).join('=').trim();
+        } else if (/^link\s*=/i.test(line)) {
+          const body = line.split('=').slice(1).join('=').trim();
+          const parts = body.split('|').map(s => s.trim());
+          // "LABEL | 0" means "no link for this service" — skip
+          if (parts.length >= 2 && parts[1] && parts[1] !== '0') {
+            links.push({ label: parts[0], url: parts[1] });
+          }
+        }
+      }
+      if (id) this.map[id] = { links, message };
+    }
+  },
+  // derive a track ID from the first audio filename: strip "-normal.mp3", "-high.wav", "-off.mp3"
+  idForTrack(idx) {
+    const t = Registry.tracks[idx];
+    if (!t) return null;
+    const firstFile = (t.files && t.files[0]) || t.meta.offline_file || '';
+    return firstFile.replace(/-(?:normal|high|off)\.(?:mp3|wav)$/i, '') || null;
+  },
+  entryForTrack(idx) {
+    const id = this.idForTrack(idx);
+    return (id && this.map[id]) || { links: [], message: null };
+  },
+  linksForTrack(idx) { return this.entryForTrack(idx).links; }
+};
+
+// ══════════════════════════════════════════════════════════════════
+// ACCESS DIALOG — access=none (nag-us IG) / access=granted (streaming links)
+// ══════════════════════════════════════════════════════════════════
+const AW_OK_TEXTS = ['[ *sigh* ]', '[ ugh fine ]', '[ OK ]', '[ ight ]', '[ CLOSE ]', '[ BACK ]'];
+const IG_NAG_URL  = 'https://www.instagram.com/twst.dual/';
+
+function randomAwOk() { return AW_OK_TEXTS[Math.floor(Math.random() * AW_OK_TEXTS.length)]; }
+
+function closeInfoDialog() {
+  infoOverlay.classList.remove('open');
+  infoBodyEl.innerHTML = '';
+  infoActionsEl.innerHTML = '';
+}
+function closeConfirm() { confirmOverlay.classList.remove('open'); }
+
+// click outside → close
+infoOverlay.addEventListener('click', e => { if (e.target === infoOverlay) closeInfoDialog(); });
+confirmOverlay.addEventListener('click', e => { if (e.target === confirmOverlay) closeConfirm(); });
+// Esc → close
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    if (confirmOverlay.classList.contains('open')) closeConfirm();
+    else if (infoOverlay.classList.contains('open')) closeInfoDialog();
+  }
+});
+
+function openConfirm(url) {
+  confirmUrlEl.textContent = url;
+  confirmOverlay.classList.add('open');
+  confirmBackBtn.onclick = () => closeConfirm();
+  confirmGoBtn.onclick  = () => {
+    closeConfirm();
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+}
+
+function openAccessDialog(idx) {
+  const axLc = String(liveMeta(idx, 'access') || '').toLowerCase();
+  infoBodyEl.innerHTML = '';
+  infoActionsEl.innerHTML = '';
+
+  if (axLc === 'granted' || axLc === 'check') {
+    // ── granted + check share the same dialog structure (links + ID) ──
+    // differ only in title + default message; per-track message override from track-links.dat wins
+    const signal = liveMeta(idx, 'signal') || '---';
+    const entry = LinksRegistry.entryForTrack(idx);
+    const links = entry.links;
+    const msgOverride = entry.message;
+
+    const defaultMsg = (axLc === 'check') ? t('dlg-msg-check') : t('dlg-msg-granted');
+    const title = (axLc === 'check') ? t('dlg-title-check') : t('dlg-title-granted');
+    // "message=0" (or empty / missing) → use default from index.html i18n; anything else → override
+    const bodyMsg = (!msgOverride || msgOverride === '0') ? defaultMsg : msgOverride;
+
+    infoTitleEl.textContent = title;
+    const frag = document.createDocumentFragment();
+    // order: ID → title → MESSAGE → body → LISTEN ON → links
+    const idLine = document.createElement('div'); idLine.className = 'id-line'; idLine.textContent = t('dlg-id'); frag.appendChild(idLine);
+    const titleEl = document.createElement('div'); titleEl.className = 'track-title'; titleEl.textContent = signal; frag.appendChild(titleEl);
+    const msgLabel = document.createElement('div'); msgLabel.className = 'id-line'; msgLabel.textContent = t('dlg-message'); frag.appendChild(msgLabel);
+    // bodyMsg may contain HTML (e.g. <b>, &nbsp;) authored in track-links.dat — render as HTML
+    const msgBody = document.createElement('div'); msgBody.className = 'msg-body'; msgBody.innerHTML = bodyMsg; frag.appendChild(msgBody);
+    const listen = document.createElement('div'); listen.className = 'id-line'; listen.textContent = t('dlg-listen'); frag.appendChild(listen);
+    if (links.length) {
+      const list = document.createElement('div'); list.className = 'link-list';
+      for (const ln of links) {
+        const a = document.createElement('a');
+        a.href = ln.url; a.textContent = ln.label || ln.url;
+        a.addEventListener('click', e => {
+          e.preventDefault();
+          openConfirm(ln.url);
+        });
+        list.appendChild(a);
+      }
+      frag.appendChild(list);
+    } else {
+      const none = document.createElement('div'); none.style.opacity = '0.6';
+      none.textContent = t('dlg-no-links');
+      frag.appendChild(none);
+    }
+    infoBodyEl.appendChild(frag);
+
+    const close = document.createElement('button');
+    close.className = 'ibtn ibtn--primary'; close.textContent = t('dlg-close');
+    close.onclick = closeInfoDialog;
+    infoActionsEl.appendChild(close);
+  } else {
+    // ── access=none (or anything unknown): "nag us" prompt ──
+    infoTitleEl.textContent = t('dlg-title-none');
+    infoBodyEl.innerHTML =
+      escapeHtml(t('dlg-msg-none')) + '<br>' +
+      escapeHtml(t('dlg-nag-intro')) + ' ' +
+      '<a href="' + IG_NAG_URL + '" id="nagUsLink">' + escapeHtml(t('dlg-nag-link')) + '</a> ' +
+      escapeHtml(t('dlg-nag-outro'));
+
+    const awOk = document.createElement('button');
+    awOk.className = 'ibtn ibtn--primary';
+    awOk.textContent = randomAwOk();
+    awOk.onclick = closeInfoDialog;
+    infoActionsEl.appendChild(awOk);
+
+    // intercept the "nag us" click → confirm dialog
+    setTimeout(() => {
+      const link = $('nagUsLink');
+      if (link) link.addEventListener('click', e => { e.preventDefault(); openConfirm(IG_NAG_URL); });
+    }, 0);
+  }
+
+  infoOverlay.classList.add('open');
+}
+
+// minimal HTML-escape for text going into innerHTML via translation strings
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+
+// access value click/tap
+function accessTapHandler(e) {
+  if (!mAccess.classList.contains('tap')) return;
+  if (Registry.currentIdx < 0) return;
+  openAccessDialog(Registry.currentIdx);
+}
+mAccess.addEventListener('click', accessTapHandler);
+mAccess.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); accessTapHandler(e); } });
+
+// ══════════════════════════════════════════════════════════════════
+// BRAND BACK-LINK — per-lang label set, progressively shortened by viewport
+// ══════════════════════════════════════════════════════════════════
+const BRAND_LABELS = {
+  latin: ['TWISTED DUALITY', 'TWST.DUAL', 'TW.DU', 'TD'],
+  ja:    ['TWISTED DUALITY', '\u53CC\u6975\u306E\u87BA\u65CB', 'SK.RS', 'SR']  // 双極の螺旋
+};
+
+function pickBrandLabel() {
+  const w = window.innerWidth;
+  const lang = document.documentElement.lang || 'en';
+  const set = (lang === 'ja') ? BRAND_LABELS.ja : BRAND_LABELS.latin;
+  const idx = w >= 861 ? 0 : w >= 641 ? 1 : w >= 481 ? 2 : 3;
+  return set[idx];
+}
+
+function updateBrandLabel() {
+  const lbl = document.querySelector('#back-td .back-lbl');
+  if (lbl) lbl.textContent = pickBrandLabel();
+}
+
+// bar-title short variant (all langs collapse to "RADIO" at <=640px)
+function updateBarTitle() {
+  const barTitle = document.getElementById('barTitle');
+  if (!barTitle) return;
+  barTitle.textContent = (window.innerWidth <= 640) ? 'RADIO' : t('bar-title');
+}
+
+// hook into applyLang so re-translation keeps top-bar responsive
+(function wrapApplyLang() {
+  if (typeof applyLang !== 'function') return;
+  const orig = applyLang;
+  window.applyLang = function(l) {
+    orig(l);
+    updateBrandLabel();
+    updateBarTitle();
+  };
+})();
+
+updateBrandLabel();
+updateBarTitle();
+window.addEventListener('resize', () => {
+  updateBrandLabel();
+  updateBarTitle();
+});
+
+// ══════════════════════════════════════════════════════════════════
+// TRACK CARD COLLAPSE — vertical button at left edge; translations per lang
+// ══════════════════════════════════════════════════════════════════
+// Latin langs: letters rotate 90° via writing-mode, arrow is ↓ (collapse) / ↑ (expand)
+// Japanese: kanji stay upright via text-orientation, arrow is ← / →
+// Card min-height = height of the tallest vertical label across all langs/states.
+const COLLAPSE_I18N = {
+  en: { collapse: 'COLLAPSE',   expand: 'TRACK INFO'   },
+  de: { collapse: 'VERBERGEN',  expand: 'TRACK-INFO'   },
+  ja: { collapse: '\u9589\u3058\u308B', expand: '\u30C8\u30E9\u30C3\u30AF\u60C5\u5831' }  // 閉じる / トラック情報
+};
+
+const trackCard = $('trackCard');
+const cardCollapseBtn = $('cardCollapse');
+const ccText = $('ccText'), ccArrow = $('ccArrow');
+
+// Measure the tallest vertical rendering of any translation + state, then
+// lock the track-card's min-height so switching langs doesn't reflow.
+function measureMaxCollapseLabelHeight() {
+  const probe = document.createElement('span');
+  probe.style.cssText =
+    'position:absolute;top:-9999px;left:-9999px;visibility:hidden;' +
+    'writing-mode:vertical-rl;' +
+    'font-family:inherit;font-size:10px;letter-spacing:2px;' +
+    'text-transform:uppercase;padding:12px 4px;' +
+    'display:inline-block;white-space:nowrap;line-height:1;';
+  document.body.appendChild(probe);
+  let max = 0;
+  for (const lang of Object.keys(COLLAPSE_I18N)) {
+    if (lang === 'ja') probe.style.textOrientation = 'upright';
+    else probe.style.textOrientation = 'mixed';
+    for (const k of ['collapse', 'expand']) {
+      probe.textContent = COLLAPSE_I18N[lang][k];
+      const h = probe.getBoundingClientRect().height;
+      if (h > max) max = h;
+    }
+  }
+  probe.remove();
+  // add extra for inner gap + arrow + outer padding
+  return Math.ceil(max + 40);
+}
+const COLLAPSE_MIN_HEIGHT = measureMaxCollapseLabelHeight();
+trackCard.style.minHeight = COLLAPSE_MIN_HEIGHT + 'px';
+
+function updateCollapseLabel() {
+  const lang = document.documentElement.lang || 'en';
+  const set = COLLAPSE_I18N[lang] || COLLAPSE_I18N.en;
+  const isCollapsed = trackCard.classList.contains('collapsed');
+  ccText.textContent = isCollapsed ? set.expand : set.collapse;
+  // arrows — unified: card slides to the LEFT edge when collapsed,
+  //   so ← = "push to edge" (collapse), → = "pull out" (expand) for all langs
+  const arrow = isCollapsed ? '\u2192' : '\u2190';  // → / ←
+  // NBSP before the arrow gives a tight inline gap, matching "COLLAPSE\u00A0↓" spec
+  ccArrow.textContent = '\u00A0' + arrow;
+  cardCollapseBtn.setAttribute('aria-label', ccText.textContent);
+  cardCollapseBtn.title = ccText.textContent;
+}
+
+cardCollapseBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  trackCard.classList.toggle('collapsed');
+  updateCollapseLabel();
+});
+
+// hook into the existing applyLang wrapper (already wraps brand+bar-title)
+(function wrapApplyLangCollapse() {
+  if (typeof applyLang !== 'function') return;
+  const orig = applyLang;
+  window.applyLang = function(l) {
+    orig(l);
+    updateCollapseLabel();
+  };
+})();
+
+updateCollapseLabel();
+
+// re-run unit/empty-state refresh on language change so Kbps/Kb/s/Kb/秒
+// and "(press SCAN)" stay in sync with the active lang — also re-localize
+// decoder + cycler (TWISTED DUALITY → 双極の螺旋 etc.)
+(function wrapApplyLangUnits() {
+  if (typeof applyLang !== 'function') return;
+  const orig = applyLang;
+  window.applyLang = function(l) {
+    orig(l);
+    StreamRate.render();
+    if (trackCard.classList.contains('card-empty')) {
+      document.getElementById('m-signal').textContent = t('press-scan');
+    } else if (Registry.currentIdx >= 0) {
+      // re-render decoder (brand aliases) + cycler
+      document.getElementById('m-decoder').textContent = localizeBrands(liveMeta(Registry.currentIdx, 'decoder') || '---');
+      if (typeof TrackCycler !== 'undefined' && TrackCycler.paint) TrackCycler.paint();
+    }
+  };
+})();
+
+// ══════════════════════════════════════════════════════════════════
+// SETTINGS: TRANSPARENCY + WAVES (persisted to localStorage)
+// ══════════════════════════════════════════════════════════════════
+const Settings = {
+  transparency: localStorage.getItem('td-radio-transparency') || 'on',
+  waves: localStorage.getItem('td-radio-waves') || 'full',
+
+  applyTransparency() {
+    document.documentElement.classList.toggle('no-transparency', this.transparency === 'off');
+    document.querySelectorAll('.bar-menu [data-transparency]').forEach(b => {
+      b.classList.toggle('active', b.dataset.transparency === this.transparency);
+    });
+    localStorage.setItem('td-radio-transparency', this.transparency);
+  },
+
+  applyWaves() {
+    const mult = this.waves === '50' ? 0.5 : this.waves === '75' ? 0.75 : 1;
+    const newLines = Math.max(20, Math.round(113 * mult));
+    if (CFG.terrainLines !== newLines) {
+      CFG.terrainLines = newLines;
+      // rebuild the terrain ring buffer for the new line count
+      terrain.buffer = new Float32Array(newLines * CFG.freqSamples);
+      terrain.beatFlags = new Uint8Array(newLines);
+      terrain.head = 0;
+    }
+    document.querySelectorAll('.bar-menu [data-waves]').forEach(b => {
+      b.classList.toggle('active', b.dataset.waves === this.waves);
+    });
+    localStorage.setItem('td-radio-waves', this.waves);
+  }
+};
+
+document.querySelectorAll('.bar-menu [data-transparency]').forEach(b => {
+  b.addEventListener('click', e => {
+    e.stopPropagation();
+    Settings.transparency = b.dataset.transparency;
+    Settings.applyTransparency();
+  });
+});
+document.querySelectorAll('.bar-menu [data-waves]').forEach(b => {
+  b.addEventListener('click', e => {
+    e.stopPropagation();
+    Settings.waves = b.dataset.waves;
+    Settings.applyWaves();
+  });
+});
+
+// apply saved settings on boot
+Settings.applyTransparency();
+Settings.applyWaves();
+
+</script>
+</body>
+</html>
