@@ -1,0 +1,24 @@
+# ─────────────────────────────────────────────────────────────
+# Locked tracks — excluded from SCAN pool + auto-advance until
+# a visitor types an unlock code from codes.dat (session-scoped;
+# refresh the tab and the lock returns).
+#
+# Format per line:   trackStem; locked=1 [; t>YYYYMMDD,HHMM] [; t<YYYYMMDD,HHMM]
+#   trackStem = filename stub (e.g. td-audio004) — no extension
+#   locked=1  = off the pool (default behavior when listed here)
+#   locked=0  = explicit unlock (useful to cancel a previous lock line)
+#
+# Optional time gates (UTC / GMT+0 — same syntax as codes.dat):
+#   t>YYYYMMDD,HHMM — lock becomes active AFTER  this moment
+#   t<YYYYMMDD,HHMM — lock becomes inactive AFTER this moment (i.e. auto-release)
+#   Combine for a window: ; t>20260420,0000; t<20260501,0000
+#
+# Locking affects the WHOLE track — a scan-skip entry cannot override a lock.
+# Codes pointing at a locked track (codes.dat `track:<stem>`) unlock it for
+# the current session only.
+#
+# Upload to Cloudflare R2 at: afest-assets/twysted/radio/locked.dat
+# ─────────────────────────────────────────────────────────────
+
+# td-audio004; locked=1
+# td-audio007; locked=1; t<20260601,0000
