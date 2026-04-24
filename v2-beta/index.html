@@ -377,7 +377,7 @@
   /* ── v2-beta BETA sticker ─────────────────────────────────────
      Large red hollow-stroke "BETA" word slashed across the brand plate.
      Pointer-events:none so it can't swallow clicks on the @wyred.on link
-     underneath. Author-intended only for this surface (v2-beta); the v1.5
+     underneath. Author-intended only for this surface (v2-beta); the v2.0
      prod copy at webiste_TD/radio/ has no .beta-sticker element. */
   .brand .beta-sticker {
     position: absolute;
@@ -2403,6 +2403,10 @@
   body.no-teaser {
     --sat-row-padt: 5px;
   }
+  /* v2-beta: satellites row hidden for now (empty station — no real channels
+     to switch between yet). Structure + Satellites module stay wired so the
+     Phase 1b router + Phase 2 engine can light it back up later. */
+  .satellite-row { display: none !important; }
   .satellite-row {
     position: fixed;
     top: var(--top-bar-h, 38px);
@@ -2922,7 +2926,7 @@
 <!-- brand: dimensions locked on boot so timeline text-swaps (wsi.line1/wsi.line2)
      don't reflow the logo position — users only see the text change, not layout shift. -->
 <div class="brand" id="brand">
-  <span class="ver-badge" id="brandVer" translate="no" aria-label="version 1.0">v1.5</span>
+  <span class="ver-badge" id="brandVer" translate="no" aria-label="version 1.0">v2.0</span>
   <div class="title" id="brandLine1">WSI Radio Receiver</div>
   <div class="sub" id="brandLine2"><span data-i18n="constructed-by">Constructed by</span> <a href="https://www.instagram.com/wyred.on/" target="_blank" rel="noopener">@wyred.on</a></div>
   <!-- v2-beta only: big red slanted BETA sticker across the logo so nobody
@@ -2952,7 +2956,7 @@
     <div class="playback-info-header">
       <div class="playback-info-title" id="playbackInfoTitle">
         <span class="pw-title pw-title--wobble">PITCH WOBBLE ON MOBILE <span class="pw-sub">(Most common on iPhone Air)</span></span>
-        <span class="pw-title pw-title--updates">UPDATES <span class="pw-sub">v1.5 &middot; since pitch-wobble notice</span></span>
+        <span class="pw-title pw-title--updates">UPDATES <span class="pw-sub">v2.0 &middot; since pitch-wobble notice</span></span>
       </div>
       <button class="playback-info-nav" id="playbackInfoNav" type="button" aria-label="Next page">&gt;&gt;&gt;</button>
     </div>
@@ -3021,7 +3025,7 @@
       </a>
       <span class="pw-tip-arrow" aria-hidden="true"></span>
     </div>
-    <div class="playback-info-watermark" id="playbackInfoWatermark" data-i18n="pw-watermark" aria-hidden="true">WAVE-ISOLATE RADIO RECEIVER v1.5</div>
+    <div class="playback-info-watermark" id="playbackInfoWatermark" data-i18n="pw-watermark" aria-hidden="true">WAVE-ISOLATE RADIO RECEIVER v2.0</div>
   </div>
 </div>
 
@@ -3294,7 +3298,7 @@
 // Bump this on every release; keep in sync with the i18n 'pw-watermark'
 // strings (see I18N dict) when the version changes.
 // ══════════════════════════════════════════════════════════════════
-const WSI_RADIO_VERSION   = '1.5';
+const WSI_RADIO_VERSION   = '2.0';
 const WSI_RADIO_BUILD_DATE = '2026-04-23';
 window.__WSI_RADIO_VERSION__  = WSI_RADIO_VERSION;
 window.__WSI_RADIO_BUILD_DATE__ = WSI_RADIO_BUILD_DATE;
@@ -3507,7 +3511,7 @@ const I18N = {
     'm-access': 'ACCESS',
     'm-origin': 'ORIGIN',
     'constructed-by': 'Constructed by',
-    'pw-watermark': 'WAVE・ISOLATE RADIO RECEIVER v1.5',
+    'pw-watermark': 'WAVE・ISOLATE RADIO RECEIVER v2.0',
     'signal-label': 'SIGNAL',
     'bpm': 'BPM',
     'key': 'KEY',
@@ -3575,7 +3579,7 @@ const I18N = {
     'm-access': 'ZUGANG',
     'm-origin': 'URSPRUNG',
     'constructed-by': 'Konstruiert von',
-    'pw-watermark': 'WAVE\u30FBISOLATE-FUNKEMPF\u00C4NGER v1.5',
+    'pw-watermark': 'WAVE\u30FBISOLATE-FUNKEMPF\u00C4NGER v2.0',
     'signal-label': 'SIGNAL',
     'bpm': 'BPM',
     'key': 'TON',
@@ -3643,7 +3647,7 @@ const I18N = {
     'm-access': 'ACCESO',
     'm-origin': 'ORIGEN',
     'constructed-by': 'Construido por',
-    'pw-watermark': 'WAVE\u30FBISOLATE | RECEPTOR RADIO v1.5',
+    'pw-watermark': 'WAVE\u30FBISOLATE | RECEPTOR RADIO v2.0',
     'signal-label': 'SE\u00D1AL',
     'bpm': 'BPM',
     'key': 'TONO',
@@ -3705,7 +3709,7 @@ const I18N = {
     'm-access': 'ACC\u00C8S',
     'm-origin': 'ORIGINE',
     'constructed-by': 'Construit par',
-    'pw-watermark': 'WAVE\u30FBISOLATE | R\u00C9CEPTEUR RADIO v1.5',
+    'pw-watermark': 'WAVE\u30FBISOLATE | R\u00C9CEPTEUR RADIO v2.0',
     'signal-label': 'SIGNAL',
     'bpm': 'BPM',
     'key': 'TON',
@@ -3767,7 +3771,7 @@ const I18N = {
     'm-access': '接続',
     'm-origin': '原曲',
     'constructed-by': '構築',
-    'pw-watermark': '波\u30FBアイソレート ラジオ受信機 v1.5',
+    'pw-watermark': '波\u30FBアイソレート ラジオ受信機 v2.0',
     'signal-label': '信号',
     'bpm': 'BPM',
     'key': '調',
