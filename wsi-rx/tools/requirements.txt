@@ -1,0 +1,61 @@
+# WSI RX v2 offline Auto-DJ engine — Python deps (Phase 2 onward).
+# Target: system Python 3.12 on GLASSBOX (Windows 11, Ryzen 9 7950X, RX 7900 XTX).
+#
+# IMPORTANT — DO NOT REINSTALL torch / torchvision / torch-directml:
+#   The system has `torch==2.4.1 + torchvision==0.19.1 + torch-directml==0.2.5.dev240914`
+#   already pinned. That pin is load-bearing for audio-separator + any other
+#   DirectML-dependent stage. Upgrading breaks the DLL linkage (per memory
+#   2026-04-03). Install the libs below into the SAME env without touching
+#   the torch stack.
+#
+# Install order:
+#   1. pip install -r requirements.txt
+#   2. pip install "madmom @ git+https://github.com/CPJKU/madmom.git" --no-build-isolation
+#      (madmom 0.16.1 on pypi breaks on Python 3.10+ — it still does
+#       `from collections import MutableSequence`, which was moved to
+#       collections.abc. Git head has the fix; --no-build-isolation lets
+#       the build pick up the already-installed Cython instead of re-isolating.)
+#   3. python -m engine.probe          # validates every stage works
+#
+# Stages blocked on this setup (documented so we don't try them again):
+#   - allin1 (Beat Transformer wrapper) — requires `natten`, which needs
+#     CUDA toolchain + torch>=2.5. Our torch is pinned at 2.4.1 for DirectML.
+#     Structure detection happens via librosa.segment.agglomerative instead.
+#   - essentia / essentia-tensorflow — no Windows wheels on PyPI, the source
+#     build fails with an IndexError in setup.py (Linux-only artefacts).
+#     Key detection uses librosa chroma + Krumhansl-Kessler profiles instead.
+#     Milestone 2f may revisit via WSL or direct TF model loading.
+#   - msaf — imports `from scipy import inf`, which scipy removed. Dead.
+#
+# -- MIR / DSP core ---------------------------------------------------------
+librosa>=0.10,<0.13         # already installed at 0.11.0
+scipy>=1.11                 # already installed
+soundfile>=0.12             # already installed
+mir_eval>=0.7               # cross-check engine output vs. hand-refined cf-rhythm.dat
+
+# -- Build-time deps for native extensions ---------------------------------
+Cython>=0.29                # madmom needs this during wheel build (--no-build-isolation)
+
+# -- Beat / downbeat tracker (CPU, ML-based DBN) ---------------------------
+# INSTALLED SEPARATELY — see step 2 above. Not listed here because pypi's
+# pinned 0.16.1 is broken on Python 3.10+ and would confuse pip's resolver.
+# madmom @ git+https://github.com/CPJKU/madmom.git
+
+# -- Audio-text embeddings --------------------------------------------------
+transformers>=4.30          # already installed at 5.3.0
+laion-clap>=1.1.4           # CLAP text↔audio embedding. PyPI module name is `laion_clap`.
+                            # Note: laion-clap hard-pins numpy<2, which downgrades
+                            # numpy to 1.26.x — breaks opencv-python + rembg on
+                            # the system Python. Acceptable trade since madmom
+                            # also needs numpy<2.
+
+# -- Local LLM client (DJ taste judge) -------------------------------------
+# ollama server already running at 0.0.0.0:11434 with gemma4:26b + gemma4:e4b.
+# The Python client just needs to be installed.
+ollama>=0.3.0               # already installed
+
+# -- Stem separation (already installed system-wide, DirectML-backed) ------
+# audio-separator              # already installed at 0.42.1
+
+# -- Utility ----------------------------------------------------------------
+rich>=13.0                  # probe.py pretty output
