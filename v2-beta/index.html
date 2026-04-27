@@ -3545,7 +3545,7 @@
 // strings (see I18N dict) when the version changes.
 // ══════════════════════════════════════════════════════════════════
 const WSI_RADIO_VERSION   = '2.0';
-const WSI_RADIO_BUILD_DATE = '2026-04-23';
+const WSI_RADIO_BUILD_DATE = '2026-04-26';
 window.__WSI_RADIO_VERSION__  = WSI_RADIO_VERSION;
 window.__WSI_RADIO_BUILD_DATE__ = WSI_RADIO_BUILD_DATE;
 
@@ -12105,6 +12105,32 @@ function devicePerfTeaserCap() {
   }
 })();
 
+// ──────────────────────────────────────────────────────────────────
+// Phase A LOAD_LEVEL — capability-derived classification, exposed as
+// a CSS class on <html> + window flag for downstream consumers.
+// Doesn't change behavior on its own; future CSS rules + bundle
+// splitting (Phase D) opt-in via `html.load-lite ...`. Mirrors v2
+// plan §22.5 without splitting the JS bundle yet.
+// ──────────────────────────────────────────────────────────────────
+(function initLoadLevel() {
+  const conn = navigator.connection || {};
+  const isFastNetwork  = conn.effectiveType === '4g' || conn.effectiveType === '5g';
+  const hasGoodCPU     = (navigator.hardwareConcurrency ?? 2) >= 4;
+  const hasGoodMemory  = (navigator.deviceMemory ?? 1) >= 4;
+  const isDataSaver    = conn.saveData === true;
+  const isDesktop      = matchMedia('(hover:hover) and (pointer:fine)').matches;
+
+  const level =
+    isDataSaver                                              ? 'lite'    :
+    isDesktop                                                ? 'full'    :
+    (isFastNetwork && hasGoodCPU && hasGoodMemory)           ? 'full'    :
+    (isFastNetwork && (hasGoodCPU || hasGoodMemory))         ? 'medium'  :
+                                                                'lite';
+
+  document.documentElement.classList.add('load-' + level);
+  window.__LOAD_LEVEL = level;
+})();
+
 // Runtime FPS watchdog — invoked from loop() while audio plays.
 const _perfWatch = { frames: 0, t0: 0 };
 function perfWatchTick() {
@@ -13617,17 +13643,48 @@ function playTeaser(audioBuffer, teaserDur) {
 // a timeline event fires its value wins over the base metaFor() lookup.
 // Reset on every track load / crossfade.
 // ══════════════════════════════════════════════════════════════════
+// ──────────────────────────────────────────────────────────────────
+// Phase A — pure-function metadata model.
+// Backported from v1.6 verified-live, mirrors v2 plan §22.1.
+// REPLACES the listener-mutation model that had the recurring
+// "track-card disappears" bug class. LiveState writes stay (no
+// reader) so applyTimelineEvent code path remains valid as
+// vestigial cache.
+// ──────────────────────────────────────────────────────────────────
 const LiveState = {
-  overrides: Object.create(null),   // { signal: '...', origin: '...', ... }
+  overrides: Object.create(null),
   reset() { this.overrides = Object.create(null); },
-  set(field, value) { this.overrides[field] = value; },
-  get(field) { return this.overrides[field]; }
+  set(field, value) { this.overrides[field] = value; },     // vestigial — no reader
+  get(field) { return this.overrides[field]; }              // vestigial — no caller
 };
 
-// unified metadata reader — timeline override wins over base
+// Pure-function metadata derivation. Walks events ≤ t_ms and applies
+// them in order. Result reflects the EXACT state the timeline declares
+// for that instant — no caching, no listener fragility.
+function metadataAtTime(idx, t_ms) {
+  const t = Registry.tracks && Registry.tracks[idx];
+  if (!t) return null;
+  const result = Object.create(null);
+  const events = t.timeline || [];
+  for (let i = 0; i < events.length; i++) {
+    const ev = events[i];
+    if (ev.time * 1000 > t_ms) break;          // events sorted ASC
+    if (ev.type === 'print') continue;          // print is a side effect
+    if (ev.type === 'wsi.line1' || ev.type === 'wsi.line2') continue;  // brand swap, not card meta
+    result[ev.type] = ev.value;
+  }
+  return result;
+}
+
+// Unified metadata reader — pure-function over derived state.
+// Falls back to Registry.metaFor base value when no timeline event
+// has set this field at the current playhead.
 function liveMeta(idx, key) {
-  const override = LiveState.get(key);
-  if (override != null) return override;
+  const t_ms = (typeof engine !== 'undefined' && engine.currentTime >= 0)
+    ? engine.currentTime * 1000
+    : 0;
+  const derived = metadataAtTime(idx, t_ms);
+  if (derived && derived[key] != null) return derived[key];
   return Registry.metaFor(idx, key) || '';
 }
 
@@ -14871,11 +14928,16 @@ async function loadTrack(idx, options) {
 
 // ── SCAN: noise → crossfade to next random track ──
 let _scanInFlight = false;
+// Phase A — generation counter. Defensive layer above _scanInFlight so any
+// stale resolve from a future code path bypassing the guard gets dropped
+// silently before it can clobber currentIdx + applyMeta with the wrong track.
+let _scanGen = 0;
 let _scanCount = 0;   // session-scoped (resets on page reload); every 3rd SCAN is wildcard
 btnScan.addEventListener('click', async () => {
   if (_scanInFlight) return;
   if (!Registry.tracks.length) { toast(t('no-signal')); return; }
   _scanInFlight = true;
+  const myGen = ++_scanGen;
   btnScan.classList.add('active');
 
   // Real fetch owns the bandwidth from here on — cancel any in-flight pre-buffer,
@@ -14982,6 +15044,15 @@ btnScan.addEventListener('click', async () => {
     // renders real meta, not the "unknown" synthetic stub. Block-load was
     // kicked in parallel with the audio fetch — usually already resolved.
     if (_blockPrimeP) { try { await _blockPrimeP; } catch (_) {} }
+    // Phase A stale-gen guard — bail before mutating shared state if a later
+    // SCAN already won. Bandwidth was already spent on the fetch (irreversible),
+    // but the stale resolve drops here instead of clobbering currentIdx +
+    // applyMeta with the wrong track.
+    if (myGen !== _scanGen) {
+      ErrTelemetry?.ping?.('scan-stale-resolve', 'dropped stale SCAN at apply',
+        { nextIdx, myGen, currentGen: _scanGen });
+      return;
+    }
     Registry.currentIdx = nextIdx;
     Registry.rememberPlayed(nextIdx);     // rolling "last 3" window for pickRandomIdx
     applyMeta(nextIdx);
@@ -15189,6 +15260,28 @@ function loop() {
 
   // fire any timeline events whose time has been crossed this frame
   if (engine.playing) TimelineRunner.tick(engine.currentTime);
+  // Phase A watchdog reconciliation — every ~32 frames (~530ms) compare the
+  // displayed signal text against pure-function expected text. If a render
+  // ever drifts (legacy listener miss, race, throttled tab catching up), one
+  // FieldCycler.paintCard rewrite restores it. ErrTelemetry pings let us
+  // trace residual drift causes; once silent for 7 days the legacy LiveState
+  // mutation paths can be deleted.
+  if (engine.playing && (terrain.frameCount & 31) === 0 && typeof FieldCycler !== 'undefined') {
+    const idx = Registry.currentIdx;
+    if (idx >= 0) {
+      const expectedRaw = liveMeta(idx, 'signal');
+      const expectedText = FieldCycler.currentDisplay('signal', expectedRaw) || '---';
+      const sigEl = document.getElementById('m-signal');
+      if (sigEl && sigEl.textContent !== expectedText) {
+        FieldCycler.paintCard('signal');
+        FieldCycler.paintCard('decoder');
+        FieldCycler.paintCard('vibe');
+        ErrTelemetry?.ping?.('watchdog-reconciled', 'card-text drift', {
+          idx, displayed: sigEl.textContent, expected: expectedText
+        });
+      }
+    }
+  }
   // SRT.print cues — parallel channel, also gated on playing so seeks/pauses
   // don't spam the overlay while the cursor is catching up.
   if (engine.playing && typeof SrtPrintRunner !== 'undefined') SrtPrintRunner.tick(engine.currentTime);
