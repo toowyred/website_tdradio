@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>About — WSI RX</title>
+<meta name="description" content="WSI RX is a running radio. Not a playlist, not a catalog: a real station behind the scenes, mixing with intent.">
+
+<style>
+/* ─────────────────────────────────────────────────────────────────
+   WSI RX about page — TD brutalist, public-facing
+   Single file, no external assets, system-font-only fallback
+   ───────────────────────────────────────────────────────────────── */
+
+:root {
+  --bg:        #0e0e0e;
+  --bg-card:   #161616;
+  --fg:        #ededed;
+  --fg-muted:  #888;
+  --fg-dim:    #555;
+  --accent:    #ff6b1a;   /* TD industrial orange */
+  --accent-dim:#7a3210;
+  --rule:      #2a2a2a;
+  --link:      #ffb27a;
+  --link-hover:#ffd6b5;
+  --quote:     #c8c8c8;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Cascadia Mono", monospace;
+
+  --max-w: 720px;
+  --gutter: clamp(20px, 5vw, 48px);
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg:        #f7f5f2;
+    --bg-card:   #fff;
+    --fg:        #1a1a1a;
+    --fg-muted:  #555;
+    --fg-dim:    #999;
+    --accent:    #c84a0a;
+    --accent-dim:#fcd3b8;
+    --rule:      #ddd;
+    --link:      #c84a0a;
+    --link-hover:#7a2c00;
+    --quote:     #2a2a2a;
+  }
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: 17px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* ─── header ─── */
+header {
+  border-bottom: 2px solid var(--accent);
+  padding: 28px var(--gutter) 22px;
+}
+header .wrap {
+  max-width: var(--max-w);
+  margin: 0 auto;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+header .brand {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 22px;
+  letter-spacing: 0.02em;
+  color: var(--fg);
+}
+header .brand .accent { color: var(--accent); }
+header .nav {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--fg-muted);
+  letter-spacing: 0.04em;
+}
+header .nav a {
+  color: var(--fg-muted);
+  text-decoration: none;
+  margin-left: 18px;
+  transition: color 0.15s;
+}
+header .nav a:hover { color: var(--accent); }
+
+/* ─── main content ─── */
+main {
+  max-width: var(--max-w);
+  margin: 0 auto;
+  padding: 56px var(--gutter) 80px;
+}
+
+/* hero */
+.hero {
+  margin-bottom: 56px;
+}
+.hero h1 {
+  font-size: clamp(32px, 6vw, 52px);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  margin: 0 0 16px;
+}
+.hero h1 .pipe {
+  color: var(--accent);
+  font-weight: 400;
+  margin: 0 6px;
+}
+.hero .tagline {
+  font-size: clamp(17px, 2.4vw, 21px);
+  color: var(--fg-muted);
+  font-style: italic;
+  line-height: 1.45;
+  max-width: 580px;
+}
+
+/* section blocks */
+section {
+  margin: 48px 0;
+  padding-top: 48px;
+  border-top: 1px solid var(--rule);
+}
+section:first-of-type {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+section h2 {
+  font-size: 13px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--accent);
+  margin: 0 0 18px;
+}
+section p {
+  margin: 0 0 16px;
+  max-width: 640px;
+}
+
+/* origin block — TWYSTED quote */
+.origin {
+  background: var(--bg-card);
+  border-left: 4px solid var(--accent);
+  padding: 24px 28px;
+  margin: 8px 0 12px;
+  font-style: italic;
+  color: var(--quote);
+  line-height: 1.65;
+}
+.origin p { margin: 0 0 14px; max-width: none; }
+.origin p:last-of-type { margin-bottom: 0; }
+.origin .attribution {
+  margin-top: 18px;
+  font-style: normal;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--fg-muted);
+  letter-spacing: 0.03em;
+}
+.origin .attribution::before {
+  content: "— ";
+  color: var(--accent);
+}
+
+/* lists */
+ul {
+  padding-left: 0;
+  list-style: none;
+  margin: 12px 0 16px;
+}
+ul li {
+  position: relative;
+  padding-left: 22px;
+  margin: 8px 0;
+}
+ul li::before {
+  content: "▸";
+  color: var(--accent);
+  position: absolute;
+  left: 0;
+  font-size: 12px;
+  top: 5px;
+}
+ul li strong {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+/* what's not here — special */
+.not-here ul li::before {
+  content: "✕";
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* code-style URL */
+code, .url {
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  background: var(--bg-card);
+  border: 1px solid var(--rule);
+  padding: 2px 6px;
+  border-radius: 3px;
+  color: var(--accent);
+}
+
+/* links */
+a {
+  color: var(--link);
+  text-decoration: underline;
+  text-decoration-color: var(--accent-dim);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+  transition: color 0.15s, text-decoration-color 0.15s;
+}
+a:hover {
+  color: var(--link-hover);
+  text-decoration-color: var(--accent);
+}
+
+/* footer */
+footer {
+  border-top: 1px solid var(--rule);
+  margin-top: 64px;
+  padding: 32px var(--gutter);
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  color: var(--fg-dim);
+  text-transform: uppercase;
+}
+footer .dotsep { color: var(--accent); margin: 0 6px; }
+
+/* small touches */
+::selection {
+  background: var(--accent);
+  color: var(--bg);
+}
+</style>
+</head>
+
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="brand">WSI<span class="accent">·</span>RX</div>
+    <nav class="nav">
+      <a href="/">listen</a>
+      <a href="/about.html">about</a>
+      <a href="mailto:td@afest.io">contact</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <div class="hero">
+    <h1>A running radio.<br><span class="pipe">/</span> Not a playlist.</h1>
+    <p class="tagline">Not a catalog. A real station behind the scenes: mixing with intent.</p>
+  </div>
+
+  <section>
+    <h2>What this is</h2>
+    <p>WSI&nbsp;RX is a radio that just runs. You arrive and it's already playing. You go AFK and it keeps going.</p>
+    <p>Every transition between tracks is designed, not auto-crossfaded. Every track has been considered, edited, or built by us before it reaches your ears.</p>
+    <p>You can land on the page mid-song, catch a transition that fits, then drift into the next track — and the experience feels intentional because&nbsp;it&nbsp;is.</p>
+  </section>
+
+  <section>
+    <h2>How this got here</h2>
+    <div class="origin">
+      <p>Started as a niche audio player. Then I asked myself: why don't CDJs do this — give us a file that lets anyone replay a DJ set perfectly, knob by knob, fader by fader? It's not impossible. We already get an XML file from the deck (Rekordbox).</p>
+      <p>Went down the rabbit hole of why no one is doing it.</p>
+      <p>Found that the music industry has been waiting for someone to build a portable mix-recipe format — something that says "this is what the DJ did" without forcing you to share the audio files. No copyright headache. If you have the songs, you can play it back and see exactly what they did to every knob.</p>
+      <p>So I started building it. WSI&nbsp;RX is what came out.</p>
+      <div class="attribution">Kyle W., project lead</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Why we don't just stream a 60-minute mix file</h2>
+    <p>That's what most "DJ mix" services do: render the whole mix to one file, upload it, done. Two problems:</p>
+    <ul>
+      <li>A single audio file <strong>hides the individual tracks</strong>. No way to know what's playing right now. No way to find that one track later.</li>
+      <li><strong>Every listener hears the exact same thing.</strong> No variation. Nothing to come back for.</li>
+    </ul>
+    <p>Our approach: keep the tracks separate, ship a recipe of how to cook. The radio renders the mix in your browser per session. Different sessions, different journeys — but every transition still hand-designed.</p>
+  </section>
+
+  <section>
+    <h2>Why not Spotify, SoundCloud, or Mixcloud?</h2>
+    <p>Those are catalog browsers. You search, you click, you listen, you decide. They're great at what they do but they're not stations.</p>
+    <p>A station means you turn it on and someone else is in charge of what you hear next. The discovery is in the curation, not the search bar.</p>
+    <p>WSI&nbsp;RX is that — a station, on the web.</p>
+  </section>
+
+  <section>
+    <h2>Why each artist has their own URL</h2>
+    <p>Kyle (TWYSTED - Twsited Duality) started building this for fun, for himself. But the underlying setup works for any artist, any genre, any catalog. So we're slowly opening it to other producers and DJs.</p>
+    <p>Each artist gets their own corner — <span class="url">radio.afest.io/u/their-handle</span> — their own catalog, their own curation, their own personality. No algorithmic recommendations. No "more like this" sidebar. No A/B-tested engagement loop. Just their music, mixed their way, running for whoever shows up.</p>
+    <p>Less of a platform, more of a small cooperative.</p>
+    <p>If you're a producer or DJ who wants this for your own work, <a href="mailto:td@afest.io">reach out</a>.</p>
+  </section>
+
+  <section class="not-here">
+    <h2>What's not here</h2>
+    <ul>
+      <li><strong>No accounts needed.</strong> No login required for listeners.</li>
+      <li><strong>No tracking.</strong> We don't watch what you listen to. Just need good internet speed.</li>
+      <li><strong>No ads.</strong> No recommendations either — the curation is the point.</li>
+      <li><strong>No DRM.</strong> If you can hear it, you can record it. We're not going to pretend otherwise.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Who's behind it</h2>
+    <p>A small studio. Three people who care more about the curation and personal customizable aesthetic than the catalog size. You make the music. The radio delivers it.</p>
+    <p>That's the whole team.</p>
+  </section>
+
+</main>
+
+<footer>
+  RADIO <span class="dotsep">·</span> AFEST <span class="dotsep">·</span> IO
+</footer>
+
+</body>
+</html>
