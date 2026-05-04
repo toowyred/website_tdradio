@@ -6,6 +6,16 @@
 <title>About — WSI RX</title>
 <meta name="description" content="WSI RX is a running radio. Not a playlist, not a catalog: a real station behind the scenes, mixing with intent.">
 
+<!-- ──────────────────────────────────────────────────────────────────
+     v2-readiness preload (in-the-ground prep for v2 ship).
+     Cheap hints the browser can act on now: warm the splash + WSI core
+     so the next click feels instant. Active behavior (in-page splash
+     swap, lite-WSI hydration) is gated on __WSI_V2_READY at end of body.
+     ────────────────────────────────────────────────────────────────── -->
+<link rel="preconnect" href="https://twysted.afest.io" crossorigin>
+<link rel="prefetch" href="/" as="document">
+<link rel="prefetch" href="/v2-beta/" as="document">
+
 <style>
 /* ─────────────────────────────────────────────────────────────────
    WSI RX about page — TD brutalist, public-facing
@@ -340,6 +350,61 @@ footer .dotsep { color: var(--accent); margin: 0 6px; }
 <footer>
   RADIO <span class="dotsep">·</span> AFEST <span class="dotsep">·</span> IO
 </footer>
+
+<!-- ──────────────────────────────────────────────────────────────────
+     v2-readiness runtime (dormant scaffolding).
+
+     Two behaviors prepped here, both gated on __WSI_V2_READY:
+
+     1) Idle-time WSI core warm: while the visitor reads, fetch the
+        v2-beta entry HTML so when they click "listen" the player
+        boots from cache. Always-on (cheap GET, cached by browser).
+
+     2) In-page splash swap: when v2 ships, intercept clicks on the
+        "listen" link, fetch /, swap <main> in-place, history.pushState
+        to '/'. Avoids the full-page reload + repaint flash of going
+        from /about → /. Currently dormant (flag = false).
+
+     Flip __WSI_V2_READY = true in the v2 ship cut to enable swap.
+     ────────────────────────────────────────────────────────────────── -->
+<script>
+  // Feature flag — flip to true when v2 lands.
+  window.__WSI_V2_READY = false;
+
+  (function v2Prep(){
+    var idle = window.requestIdleCallback || function(cb){ return setTimeout(cb, 1500); };
+
+    // (1) Always-on idle warm: fetch the WSI core so the swap feels free.
+    idle(function(){
+      try {
+        fetch('/v2-beta/', { credentials: 'omit', cache: 'force-cache' }).catch(function(){});
+        fetch('/',         { credentials: 'omit', cache: 'force-cache' }).catch(function(){});
+      } catch(_) {}
+    });
+
+    // (2) Dormant in-page splash swap. Listen for clicks on header /listen.
+    var listen = document.querySelector('header .nav a[href="/"]');
+    if (!listen) return;
+    listen.addEventListener('click', function(e){
+      if (!window.__WSI_V2_READY) return;                       // dormant — full nav
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.button) return;  // let user open new tabs
+      e.preventDefault();
+      fetch('/', { credentials: 'omit' })
+        .then(function(r){ return r.text(); })
+        .then(function(html){
+          var doc = new DOMParser().parseFromString(html, 'text/html');
+          var newMain = doc.querySelector('main');
+          var curMain = document.querySelector('main');
+          if (!newMain || !curMain) { window.location.href = '/'; return; }
+          curMain.replaceWith(newMain);
+          history.pushState({}, '', '/');
+          if (doc.title) document.title = doc.title;
+          window.scrollTo(0, 0);
+        })
+        .catch(function(){ window.location.href = '/'; });
+    });
+  })();
+</script>
 
 </body>
 </html>
